@@ -1,6 +1,7 @@
 """Walk-forward validation and parameter optimization."""
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
@@ -9,6 +10,9 @@ import numpy as np
 import pandas as pd
 
 from quant.backtest.engine import BacktestConfig, BacktestEngine, Strategy
+
+logger = logging.getLogger(__name__)
+
 
 
 @dataclass
@@ -242,7 +246,8 @@ class WalkForwardValidator:
                     best_score = score
                     best_params = params.copy()
 
-            except Exception:
+            except Exception as e:
+                logger.warning("Optimization failed for params %s: %s", params, e)
                 continue
 
         return best_params or {}, best_score
@@ -269,7 +274,8 @@ class WalkForwardValidator:
                 'max_drawdown': self._calc_max_dd(results),
                 'num_trades': len(results.get('fills', [])),
             }
-        except Exception:
+        except Exception as e:
+            logger.warning("Evaluation failed for params %s: %s", params, e)
             return {}
 
     def _calc_sharpe(self, results: dict) -> float:
@@ -376,8 +382,10 @@ class ParameterSweep:
 
                 results.append(row)
 
-            except Exception:
+            except Exception as e:
+                logger.warning("Parameter sweep failed for params %s: %s", params, e)
                 continue
+
 
         return pd.DataFrame(results)
 
