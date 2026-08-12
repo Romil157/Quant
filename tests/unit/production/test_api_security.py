@@ -94,22 +94,41 @@ def test_dev_environment_auth_optional():
 
 def test_generic_error_messages_returned_to_clients():
     """Test that unexpected server exceptions return generic error detail rather than raw traceback/exception string."""
-    from fastapi.testclient import TestClient
-    from quant.production.api import create_app
+    from quant.production.api import MLExperimentRequest, create_app
 
     config = ProductionConfig(environment="development")
     config.security.api_key = ""
     app = create_app(config)
-    client = TestClient(app)
+    compare_route = next(r for r in app.routes if getattr(r, "path", None) == "/api/v1/ml/compare")
+    req = MLExperimentRequest(symbols=["INVALID_SYM"], start_date="2023-01-01", end_date="2023-06-01")
+    with pytest.raises(HTTPException) as exc_info:
+        asyncio.run(compare_route.endpoint(req))
 
-    # Test compare_models endpoint error mask
-    response = client.post(
-        "/api/v1/ml/compare",
-        json={"symbols": ["INVALID_SYM"], "start_date": "2023-01-01", "end_date": "2023-06-01"},
-    )
-    if response.status_code == 500:
-        assert response.json()["detail"] == "Internal server error, see logs"
-        assert "KeyError" not in response.json()["detail"]
-        assert "Exception" not in response.json()["detail"]
+    assert exc_info.value.status_code == 500
+    assert exc_info.value.detail == "Internal server error, see logs"
+
+
+def test_production_allowed_hosts_wildcard_rejected():
+    """Test that production environment rejects wildcard allowed_hosts."""
+    from quant.production.api import create_app
+    config = ProductionConfig(environment="production")
+    config.security.api_key = "secret"
+    config.security.allowed_hosts = ["*"]
+    with pytest.raises(ValueError) as exc_info:
+        create_app(config)
+    assert "allowed_hosts must be explicitly configured in production" in str(exc_info.value)
+
+
+def test_production_explicit_allowed_hosts_accepted():
+    """Test that production environment accepts explicit allowed_hosts."""
+    from quant.production.api import create_app
+    config = ProductionConfig(environment="production")
+    config.security.api_key = "secret"
+    config.security.allowed_hosts = ["api.quant.com", "localhost"]
+    app = create_app(config)
+    assert app.title == "Quant Platform API"
+
+
+
 
 

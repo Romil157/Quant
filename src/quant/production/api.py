@@ -19,6 +19,8 @@ from fastapi import (
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, PlainTextResponse
 from pydantic import BaseModel, Field
+from starlette.middleware.trustedhost import TrustedHostMiddleware
+
 
 from quant.backtest.engine import BacktestConfig, BacktestEngine
 from quant.data import download_data, validate_data
@@ -184,9 +186,11 @@ def create_app(config: ProductionConfig | None = None) -> FastAPI:
     if config is None:
         config = get_config()
 
-    if config.environment == "production" and not config.security.api_key:
-        raise RuntimeError("API key authentication must be configured in production environment (QUANT_API_KEY environment variable missing)")
-
+    if config.environment == "production":
+        if not config.security.api_key:
+            raise RuntimeError("API key authentication must be configured in production environment (QUANT_API_KEY environment variable missing)")
+        if not config.security.allowed_hosts or "*" in config.security.allowed_hosts:
+            raise ValueError("SecurityConfig.allowed_hosts must be explicitly configured in production (cannot contain wildcard '*')")
 
     app = FastAPI(
         title="Quant Platform API",
@@ -197,7 +201,14 @@ def create_app(config: ProductionConfig | None = None) -> FastAPI:
         redoc_url="/redoc" if config.api.enable_docs else None,
     )
 
+    # Trusted Host Middleware
+    app.add_middleware(
+        TrustedHostMiddleware,
+        allowed_hosts=config.security.allowed_hosts,
+    )
+
     # CORS
+
     app.add_middleware(
         CORSMiddleware,
         allow_origins=config.api.cors_origins,
