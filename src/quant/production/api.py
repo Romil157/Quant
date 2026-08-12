@@ -191,6 +191,9 @@ def create_app(config: ProductionConfig | None = None) -> FastAPI:
             raise RuntimeError("API key authentication must be configured in production environment (QUANT_API_KEY environment variable missing)")
         if not config.security.allowed_hosts or "*" in config.security.allowed_hosts:
             raise ValueError("SecurityConfig.allowed_hosts must be explicitly configured in production (cannot contain wildcard '*')")
+        if not config.api.cors_origins or "*" in config.api.cors_origins:
+            raise ValueError("APIConfig.cors_origins must be explicitly configured (non-empty and no wildcard '*') when allow_credentials=True in production environment.")
+
 
     app = FastAPI(
         title="Quant Platform API",

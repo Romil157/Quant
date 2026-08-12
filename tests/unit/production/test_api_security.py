@@ -129,6 +129,42 @@ def test_production_explicit_allowed_hosts_accepted():
     assert app.title == "Quant Platform API"
 
 
+def test_production_cors_wildcard_rejected():
+    """Test that production environment rejects wildcard cors_origins when allow_credentials=True."""
+    from quant.production.api import create_app
+    config = ProductionConfig(environment="production")
+    config.security.api_key = "secret"
+    config.security.allowed_hosts = ["api.quant.com"]
+    config.api.cors_origins = ["*"]
+    with pytest.raises(ValueError) as exc_info:
+        create_app(config)
+    assert "cors_origins must be explicitly configured" in str(exc_info.value)
+
+
+def test_production_cors_empty_rejected():
+    """Test that production environment rejects empty cors_origins."""
+    from quant.production.api import create_app
+    config = ProductionConfig(environment="production")
+    config.security.api_key = "secret"
+    config.security.allowed_hosts = ["api.quant.com"]
+    config.api.cors_origins = []
+    with pytest.raises(ValueError) as exc_info:
+        create_app(config)
+    assert "cors_origins must be explicitly configured" in str(exc_info.value)
+
+
+def test_production_cors_explicit_accepted():
+    """Test that production environment accepts explicit cors_origins."""
+    from quant.production.api import create_app
+    config = ProductionConfig(environment="production")
+    config.security.api_key = "secret"
+    config.security.allowed_hosts = ["api.quant.com"]
+    config.api.cors_origins = ["https://dashboard.quant.com"]
+    app = create_app(config)
+    assert app.title == "Quant Platform API"
+
+
+
 
 
 
