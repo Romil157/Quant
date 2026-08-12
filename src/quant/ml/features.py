@@ -245,14 +245,15 @@ class FeaturePipeline:
             if self.config.use_hurst:
                 for w in self.config.hurst_windows:
                     sym_features[f'{symbol}_hurst_{w}'] = close.rolling(w).apply(
-                        lambda x: hurst_exponent(x) if len(x) == w else np.nan, raw=True
+                        lambda x, win=w: hurst_exponent(x) if len(x) == win else np.nan, raw=True
                     )
 
             if self.config.use_half_life:
                 for w in self.config.hl_windows:
                     sym_features[f'{symbol}_halflife_{w}'] = close.rolling(w).apply(
-                        lambda x: half_life(x) if len(x) == w else np.nan, raw=True
+                        lambda x, win=w: half_life(x) if len(x) == win else np.nan, raw=True
                     )
+
 
             # Volume features
             if self.config.use_volume_features and volume is not None:

@@ -85,16 +85,15 @@ class MLPipeline:
     ) -> MLPipelineResult:
         """
         Fit the complete pipeline.
-        
+
         Args:
             data: Dict of symbol -> OHLCV DataFrame
             tune: Whether to tune hyperparameters (overrides config)
-        
+
         Returns:
             MLPipelineResult with fitted model and metrics
         """
         # Build features
-        print("Building features...")
         self.feature_pipeline = FeaturePipeline(self.config.feature_config)
         X, y = self.feature_pipeline.fit_transform(data)
 
@@ -107,7 +106,6 @@ class MLPipeline:
         X = X[valid]
         y = y[valid]
 
-        print(f"Feature matrix: {X.shape}, Target: {len(y)}")
 
         # Split train/test
         test_size = int(len(X) * self.config.test_size)
@@ -115,7 +113,6 @@ class MLPipeline:
         y_train, y_test = y.iloc[:-test_size], y.iloc[-test_size:]
 
         # Time-series CV
-        print("Running cross-validation...")
         cv = TimeSeriesCV(self.config.cv_config)
         base_model = create_model(self.config.model_name, self.config.task, self.config.model_params)
 
@@ -126,11 +123,9 @@ class MLPipeline:
             scoring=self._get_scoring_fn(),
         )
 
-        print(f"CV Test Score: {self.cv_summary.mean_test_score:.4f} ± {self.cv_summary.std_test_score:.4f}")
 
         # Hyperparameter tuning
         if tune or (tune is None and self.config.tune_hyperparams):
-            print("Tuning hyperparameters...")
             base_model = tune_hyperparameters(
                 base_model,
                 X_train, y_train,
@@ -143,12 +138,10 @@ class MLPipeline:
             )
 
         # Fit final model
-        print("Fitting final model...")
         self.model = base_model
         self.model.fit(X_train, y_train)
 
         # Evaluate on test
-        print("Evaluating on test set...")
         test_metrics = self._evaluate_test(X_test, y_test)
 
         # Feature importance
@@ -287,7 +280,6 @@ def compare_models(
     results = []
 
     for name in model_names:
-        print(f"\nEvaluating {name}...")
         try:
             result = run_ml_experiment(
                 data=data,
@@ -303,7 +295,6 @@ def compare_models(
                 **result.test_metrics,
             })
         except Exception as e:
-            print(f"  Failed: {e}")
             results.append({'model': name, 'error': str(e)})
 
     return pd.DataFrame(results).set_index('model')
@@ -318,14 +309,14 @@ def walk_forward_backtest(
 ) -> pd.DataFrame:
     """
     Run walk-forward backtest of ML pipeline.
-    
+
     Args:
         pipeline: Fitted MLPipeline
         data: Full dataset
         initial_train: Initial training window
         step: Step size between retraining
         retrain: Whether to retrain at each step
-    
+
     Returns:
         DataFrame with predictions and actuals
     """

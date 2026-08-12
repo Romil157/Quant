@@ -25,9 +25,21 @@ def show_config(config_path: Annotated[Path, typer.Option(help="Path to YAML con
     typer.echo(cfg.model_dump_json(indent=2))
 
 
+@app.callback(invoke_without_command=True)
+def main_callback(ctx: typer.Context) -> None:
+    """Quant research platform CLI."""
+    if ctx.invoked_subcommand is None:
+        typer.echo("=========================================")
+        typer.echo("Quant Research Platform v0.1.0")
+        typer.echo("=========================================")
+        typer.echo("Platform status: Ready.")
+        typer.echo("Run 'python -m quant --help' to list available commands.")
+
+
 def main() -> None:
     app()
 
 
 if __name__ == "__main__":
     main()
+

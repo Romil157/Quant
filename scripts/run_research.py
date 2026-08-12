@@ -14,23 +14,19 @@ def main():
     parser.add_argument("--config", default="configs/research.yaml", help="Config file")
     parser.add_argument("--experiment", help="Experiment name")
     parser.add_argument("--symbols", nargs="+", help="Override universe")
-    
+
     args = parser.parse_args()
-    
+
     # Load config
-    with open(args.config, "r") as f:
+    with open(args.config) as f:
         config = yaml.safe_load(f)
-    
+
     # Apply overrides
     if args.symbols:
         config["research"]["universe"] = args.symbols
-    
-    print("Running research with config:")
-    print(yaml.dump(config, default_flow_style=False))
-    
+
+
     # TODO: Implement research engine
-    print("\n[TODO] Research engine not yet implemented")
-    print("This will be implemented in Phase 7")
 
 
 if __name__ == "__main__":

@@ -150,7 +150,7 @@ class OnlineLearner:
 
         if self.config.model_type in ["river_linear", "river_ensemble"]:
             # River models expect dict-like input
-            for xi, yi in zip(X_scaled, y_values):
+            for xi, yi in zip(X_scaled, y_values, strict=False):
                 x_dict = {f"f{i}": val for i, val in enumerate(xi)}
                 if self.config.task == "regression":
                     self.model.learn_one(x_dict, yi)
@@ -422,7 +422,7 @@ class OnlineEnsemble:
 
     def update_performance(self, y_true: np.ndarray, y_pred: np.ndarray) -> None:
         """Update drift detector and potentially retrain."""
-        for yt, yp in zip(y_true, y_pred):
+        for yt, yp in zip(y_true, y_pred, strict=False):
             if self.drift_detector.update(yt, yp):
                 # Drift detected - retrain worst model
                 self._replace_worst_model()

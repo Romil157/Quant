@@ -388,10 +388,7 @@ def ensemble_predict(
 
     preds = np.column_stack(preds_list)
 
-    if weights is None:
-        weights_arr = np.ones(len(models)) / len(models)
-    else:
-        weights_arr = np.array(weights)
+    weights_arr = np.ones(len(models)) / len(models) if weights is None else np.array(weights)
 
     if method == 'mean':
         return np.average(preds, axis=1, weights=weights_arr)  # type: ignore

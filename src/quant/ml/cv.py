@@ -70,10 +70,7 @@ class TimeSeriesCV:
         n = len(X)
         indices = np.arange(n)
 
-        if self.config.step is None:
-            step = self.config.test_size
-        else:
-            step = self.config.step
+        step = self.config.test_size if self.config.step is None else self.config.step
 
         folds = []
 
@@ -87,7 +84,7 @@ class TimeSeriesCV:
                 raise ValueError("train_size required for rolling window")
             start = self.config.train_size
 
-        for fold, i in enumerate(range(start, n - self.config.test_size + 1, step)):
+        for _fold, i in enumerate(range(start, n - self.config.test_size + 1, step)):
             if self.config.expanding:
                 train_start_idx = 0
                 train_end_idx = i - self.config.gap - 1
@@ -134,7 +131,7 @@ def cross_validate(
 ) -> CVSummary:
     """
     Run time-series cross-validation.
-    
+
     Args:
         model: sklearn-compatible estimator
         X: Features DataFrame
@@ -143,7 +140,7 @@ def cross_validate(
         scoring: Scoring function (y_true, y_pred) -> float
         fit_params: Additional params for model.fit()
         return_models: Whether to store fitted models
-    
+
     Returns:
         CVSummary with all fold results
     """
@@ -270,14 +267,14 @@ def walk_forward_predict(
 ) -> pd.DataFrame:
     """
     Generate walk-forward predictions.
-    
+
     Args:
         model: Base estimator
         X: Features
         y: Target
         cv: TimeSeriesCV config
         retrain: Whether to retrain on each fold (True) or use single model (False)
-    
+
     Returns:
         DataFrame with columns: actual, predicted, fold
     """
@@ -318,7 +315,7 @@ def purged_kfold_cv(
 ) -> list[tuple]:
     """
     Purged K-Fold CV (Lopez de Prado).
-    
+
     Removes embargo periods between train and test to prevent leakage
     from autocorrelation.
     """
@@ -359,13 +356,13 @@ def combinatorial_purged_cv(
 ) -> list[tuple]:
     """
     Combinatorial Purged K-Fold CV (Lopez de Prado).
-    
+
     Creates multiple test set combinations for more robust validation.
     """
     from itertools import combinations
 
     n = len(X)
-    indices = np.arange(n)
+    np.arange(n)
     embargo = int(n * pct_embargo)
     fold_size = n // n_splits
 

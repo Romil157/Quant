@@ -65,7 +65,7 @@ def test_get_model_class():
     # Unknown
     try:
         get_model_class("unknown", "regression")
-        assert False, "Should have raised"
+        raise AssertionError("Should have raised")
     except ValueError:
         pass
 

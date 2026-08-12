@@ -35,6 +35,9 @@ Desktop.ini
 data/raw/**/*.parquet
 data/processed/**/*.parquet
 data/cache/**/*.parquet
+*.duckdb
+*.sqlite
+*.db
 
 # Logs
 *.log

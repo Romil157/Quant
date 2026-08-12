@@ -12,16 +12,11 @@ def main():
     parser.add_argument("--results", required=True, help="Path to backtest results")
     parser.add_argument("--output", default="reports", help="Output directory")
     parser.add_argument("--format", choices=["html", "pdf", "markdown"], default="html")
-    
-    args = parser.parse_args()
-    
-    print(f"Generating report from {args.results}")
-    print(f"Output: {args.output}")
-    print(f"Format: {args.format}")
-    
+
+    parser.parse_args()
+
+
     # TODO: Implement report generation
-    print("\n[TODO] Report generation not yet implemented")
-    print("This will be implemented in Phase 7")
 
 
 if __name__ == "__main__":

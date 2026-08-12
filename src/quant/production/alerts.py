@@ -1,15 +1,13 @@
 """Alerting system for production monitoring."""
 from __future__ import annotations
 
+import asyncio
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from enum import Enum
-from typing import Any, Callable, Dict, List, Optional
-import asyncio
-import json
-import logging
+from typing import Any
 
-from quant.production.config import get_config
 from quant.production.monitoring import get_logger, get_metrics_collector
 
 
@@ -38,13 +36,13 @@ class Alert:
     status: AlertStatus = AlertStatus.FIRING
     created_at: datetime = field(default_factory=datetime.utcnow)
     updated_at: datetime = field(default_factory=datetime.utcnow)
-    resolved_at: Optional[datetime] = None
-    acknowledged_by: Optional[str] = None
-    acknowledged_at: Optional[datetime] = None
-    labels: Dict[str, str] = field(default_factory=dict)
-    annotations: Dict[str, str] = field(default_factory=dict)
-    value: Optional[float] = None
-    threshold: Optional[float] = None
+    resolved_at: datetime | None = None
+    acknowledged_by: str | None = None
+    acknowledged_at: datetime | None = None
+    labels: dict[str, str] = field(default_factory=dict)
+    annotations: dict[str, str] = field(default_factory=dict)
+    value: float | None = None
+    threshold: float | None = None
 
 
 @dataclass
@@ -56,32 +54,32 @@ class AlertRule:
     condition: str  # e.g., "> 0.95"
     level: AlertLevel = AlertLevel.WARNING
     for_duration: timedelta = timedelta(minutes=5)
-    labels: Dict[str, str] = field(default_factory=dict)
-    annotations: Dict[str, str] = field(default_factory=dict)
+    labels: dict[str, str] = field(default_factory=dict)
+    annotations: dict[str, str] = field(default_factory=dict)
     enabled: bool = True
 
 
 class AlertManager:
     """Manage alerts and notifications."""
-    
+
     def __init__(self):
         self.logger = get_logger("alerts")
         self.metrics = get_metrics_collector()
-        
-        self.rules: Dict[str, AlertRule] = {}
-        self.alerts: Dict[str, Alert] = {}
-        self.handlers: List[Callable[[Alert], None]] = []
-        
+
+        self.rules: dict[str, AlertRule] = {}
+        self.alerts: dict[str, Alert] = {}
+        self.handlers: list[Callable[[Alert], Any]] = []
+
         # Evaluation state
         self._evaluating = False
-        self._evaluation_task: Optional[asyncio.Task] = None
+        self._evaluation_task: asyncio.Task | None = None
         self._evaluation_interval = 60  # seconds
-    
+
     def add_rule(self, rule: AlertRule) -> None:
         """Add an alert rule."""
         self.rules[rule.name] = rule
         self.logger.info("alert_rule_added", name=rule.name, component=rule.component)
-    
+
     def remove_rule(self, name: str) -> bool:
         """Remove an alert rule."""
         if name in self.rules:
@@ -89,23 +87,24 @@ class AlertManager:
             self.logger.info("alert_rule_removed", name=name)
             return True
         return False
-    
-    def add_handler(self, handler: Callable[[Alert], None]) -> None:
+
+    def add_handler(self, handler: Callable[[Alert], Any]) -> None:
         """Add notification handler."""
         self.handlers.append(handler)
-    
+
+
     def start(self) -> None:
         """Start alert evaluation loop."""
         if self._evaluation_task is None or self._evaluation_task.done():
             self._evaluation_task = asyncio.create_task(self._evaluate_loop())
             self.logger.info("alert_evaluation_started")
-    
+
     def stop(self) -> None:
         """Stop alert evaluation loop."""
         if self._evaluation_task and not self._evaluation_task.done():
             self._evaluation_task.cancel()
             self.logger.info("alert_evaluation_stopped")
-    
+
     async def _evaluate_loop(self) -> None:
         """Periodic alert evaluation."""
         while True:
@@ -114,44 +113,44 @@ class AlertManager:
             except Exception as e:
                 self.logger.error("alert_evaluation_error", error=str(e))
             await asyncio.sleep(self._evaluation_interval)
-    
+
     async def evaluate(self) -> None:
         """Evaluate all alert rules."""
         if self._evaluating:
             return
-        
+
         self._evaluating = True
-        
+
         try:
             for rule in self.rules.values():
                 if not rule.enabled:
                     continue
-                
+
                 await self._evaluate_rule(rule)
         finally:
             self._evaluating = False
-    
+
     async def _evaluate_rule(self, rule: AlertRule) -> None:
         """Evaluate a single alert rule."""
         # In a real implementation, this would query Prometheus
         # For now, we'll use the metrics collector
         pass
-    
+
     def fire_alert(
         self,
         rule_name: str,
         message: str,
         value: float,
         threshold: float,
-        labels: Optional[Dict[str, str]] = None,
+        labels: dict[str, str] | None = None,
     ) -> Alert:
         """Fire an alert."""
         rule = self.rules.get(rule_name)
         if not rule:
             raise ValueError(f"Rule not found: {rule_name}")
-        
+
         alert_id = f"{rule_name}_{int(datetime.utcnow().timestamp())}"
-        
+
         alert = Alert(
             id=alert_id,
             name=rule.name,
@@ -163,16 +162,16 @@ class AlertManager:
             labels={**rule.labels, **(labels or {})},
             annotations={**rule.annotations},
         )
-        
+
         self.alerts[alert_id] = alert
-        
+
         # Notify handlers
         for handler in self.handlers:
             try:
                 handler(alert)
             except Exception as e:
                 self.logger.error("alert_handler_error", handler=handler.__name__, error=str(e))
-        
+
         self.logger.warning(
             "alert_fired",
             alert_id=alert_id,
@@ -180,62 +179,62 @@ class AlertManager:
             level=rule.level.value,
             message=message,
         )
-        
+
         return alert
-    
+
     def resolve_alert(self, alert_id: str) -> bool:
         """Resolve an alert."""
         if alert_id not in self.alerts:
             return False
-        
+
         alert = self.alerts[alert_id]
         alert.status = AlertStatus.RESOLVED
         alert.resolved_at = datetime.utcnow()
         alert.updated_at = datetime.utcnow()
-        
+
         self.logger.info("alert_resolved", alert_id=alert_id)
         return True
-    
+
     def acknowledge_alert(self, alert_id: str, user: str) -> bool:
         """Acknowledge an alert."""
         if alert_id not in self.alerts:
             return False
-        
+
         alert = self.alerts[alert_id]
         alert.status = AlertStatus.ACKNOWLEDGED
         alert.acknowledged_by = user
         alert.acknowledged_at = datetime.utcnow()
         alert.updated_at = datetime.utcnow()
-        
+
         self.logger.info("alert_acknowledged", alert_id=alert_id, user=user)
         return True
-    
-    def get_active_alerts(self) -> List[Alert]:
+
+    def get_active_alerts(self) -> list[Alert]:
         """Get all active (firing) alerts."""
         return [
             a for a in self.alerts.values()
             if a.status == AlertStatus.FIRING
         ]
-    
+
     def get_alerts(
         self,
-        status: Optional[AlertStatus] = None,
-        component: Optional[str] = None,
-        level: Optional[AlertLevel] = None,
-    ) -> List[Alert]:
+        status: AlertStatus | None = None,
+        component: str | None = None,
+        level: AlertLevel | None = None,
+    ) -> list[Alert]:
         """Get alerts with filters."""
         alerts = list(self.alerts.values())
-        
+
         if status:
             alerts = [a for a in alerts if a.status == status]
         if component:
             alerts = [a for a in alerts if a.component == component]
         if level:
             alerts = [a for a in alerts if a.level == level]
-        
+
         return alerts
-    
-    def get_alert(self, alert_id: str) -> Optional[Alert]:
+
+    def get_alert(self, alert_id: str) -> Alert | None:
         """Get a specific alert."""
         return self.alerts.get(alert_id)
 
@@ -245,13 +244,13 @@ class AlertManager:
 async def log_handler(alert: Alert) -> None:
     """Log alert handler."""
     logger = get_logger("alerts.notifications")
-    
+
     level_map = {
         AlertLevel.INFO: logger.info,
         AlertLevel.WARNING: logger.warning,
         AlertLevel.CRITICAL: logger.error,
     }
-    
+
     log_func = level_map.get(alert.level, logger.info)
     log_func(
         "alert_notification",
@@ -268,7 +267,7 @@ async def log_handler(alert: Alert) -> None:
 async def webhook_handler(alert: Alert, webhook_url: str) -> None:
     """Webhook notification handler."""
     import aiohttp
-    
+
     payload = {
         "alert_id": alert.id,
         "name": alert.name,
@@ -282,19 +281,22 @@ async def webhook_handler(alert: Alert, webhook_url: str) -> None:
         "labels": alert.labels,
         "annotations": alert.annotations,
     }
-    
+
     try:
-        async with aiohttp.ClientSession() as session:
-            async with session.post(webhook_url, json=payload) as resp:
-                if resp.status >= 400:
-                    logger = get_logger("alerts.webhook")
-                    logger.error("webhook_failed", status=resp.status)
+        async with (
+            aiohttp.ClientSession() as session,
+            session.post(webhook_url, json=payload) as resp,
+        ):
+            if resp.status >= 400:
+                logger = get_logger("alerts.webhook")
+                logger.error("webhook_failed", status=resp.status)
+
     except Exception as e:
         logger = get_logger("alerts.webhook")
         logger.error("webhook_error", error=str(e))
 
 
-async def email_handler(alert: Alert, recipients: List[str]) -> None:
+async def email_handler(alert: Alert, recipients: list[str]) -> None:
     """Email notification handler (placeholder)."""
     logger = get_logger("alerts.email")
     logger.info("email_notification", alert_id=alert.id, recipients=recipients)
@@ -303,7 +305,7 @@ async def email_handler(alert: Alert, recipients: List[str]) -> None:
 
 # Default alert rules
 
-def create_default_rules() -> List[AlertRule]:
+def create_default_rules() -> list[AlertRule]:
     """Create default production alert rules."""
     return [
         AlertRule(
@@ -364,7 +366,7 @@ def create_default_rules() -> List[AlertRule]:
 
 
 # Global alert manager
-_alert_manager: Optional[AlertManager] = None
+_alert_manager: AlertManager | None = None
 
 
 def get_alert_manager() -> AlertManager:
@@ -372,14 +374,14 @@ def get_alert_manager() -> AlertManager:
     global _alert_manager
     if _alert_manager is None:
         _alert_manager = AlertManager()
-        
+
         # Add default rules
         for rule in create_default_rules():
             _alert_manager.add_rule(rule)
-        
+
         # Add default handlers
         _alert_manager.add_handler(log_handler)
-    
+
     return _alert_manager
 
 
@@ -391,11 +393,11 @@ async def check_metric_threshold(
     rule_name: str,
     component: str,
     level: AlertLevel = AlertLevel.WARNING,
-    labels: Optional[Dict[str, str]] = None,
-) -> Optional[Alert]:
+    labels: dict[str, str] | None = None,
+) -> Alert | None:
     """Check a metric against threshold and fire alert if needed."""
     manager = get_alert_manager()
-    
+
     # Parse condition
     triggered = False
     if condition.startswith(">"):
@@ -410,7 +412,7 @@ async def check_metric_threshold(
         triggered = value == threshold
     elif condition.startswith("!="):
         triggered = value != threshold
-    
+
     if triggered:
         return manager.fire_alert(
             rule_name=rule_name,
@@ -419,5 +421,5 @@ async def check_metric_threshold(
             threshold=threshold,
             labels=labels,
         )
-    
+
     return None

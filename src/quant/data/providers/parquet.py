@@ -1,10 +1,13 @@
 """Local Parquet market data provider."""
+import re
 from datetime import datetime
 from pathlib import Path
 
 import pandas as pd
 
 from quant.data.providers.base import DataNotAvailableError, MarketDataProvider, SymbolNotFoundError
+
+SYMBOL_REGEX = re.compile(r"^[A-Za-z0-9_.-]+$")
 
 
 class ParquetProvider(MarketDataProvider):
@@ -39,7 +42,17 @@ class ParquetProvider(MarketDataProvider):
         self._symbol_cache: dict[str, list[int]] = {}
 
     def _get_symbol_path(self, symbol: str) -> Path:
-        return self._data_root / self._provider / self._asset_class / symbol
+        if not SYMBOL_REGEX.match(symbol):
+            raise ValueError(f"Invalid symbol format: {symbol!r}")
+
+        path = (self._data_root / self._provider / self._asset_class / symbol).resolve()
+        data_root_resolved = self._data_root.resolve()
+
+        if not path.is_relative_to(data_root_resolved):
+            raise ValueError(f"Symbol path is outside data_root: {symbol!r}")
+
+        return path
+
 
     def _get_available_years(self, symbol: str) -> list[int]:
         if symbol in self._symbol_cache:
