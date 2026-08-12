@@ -1,0 +1,75 @@
+# Paper trading configuration
+project:
+  name: quant
+  version: 0.1.0
+
+data:
+  raw_root: data/raw
+  processed_root: data/processed
+  cache_root: data/cache
+  metadata_root: data/metadata
+
+logging:
+  level: INFO
+  format: "%(asctime)s %(levelname)s %(name)s: %(message)s"
+
+providers:
+  mock:
+    enabled: true
+  parquet:
+    enabled: false
+
+paper_trading:
+  enabled: false  # Must be explicitly enabled
+  broker: "simulated"
+  account_id: "paper_account_001"
+  initial_capital: 100000
+  base_currency: "USD"
+  
+  # Market hours (US Eastern Time)
+  market_open: "09:30"
+  market_close: "16:00"
+  timezone: "America/New_York"
+  
+  # Execution simulation
+  execution:
+    commission_bps: 2.0
+    spread_bps: 1.0
+    slippage_bps: 2.0
+    fill_probability: 1.0  # 1.0 = always fill
+    partial_fill_prob: 0.0
+    
+  # Risk limits
+  risk:
+    max_position_pct: 0.10
+    max_gross_exposure: 1.0
+    max_net_exposure: 0.5
+    max_daily_loss: 0.05
+    max_drawdown: 0.15
+    position_limit_check: "pre_trade"
+    
+  # Data feed
+  data:
+    provider: "mock"
+    symbols: ["SPY", "QQQ", "IWM"]
+    timeframe: "1m"
+    
+  # Monitoring
+  monitoring:
+    log_trades: true
+    log_positions: true
+    log_pnl: true
+    alert_on_risk_breach: true
+    
+  # Reporting
+  reporting:
+    daily_summary: true
+    eod_positions: true
+    trade_log_path: reports/paper/trades.parquet
+    position_log_path: reports/paper/positions.parquet
+    pnl_log_path: reports/paper/pnl.parquet
+
+# Safety: live trading must be explicitly enabled
+live_trading:
+  enabled: false
+  warning: "NEVER enable live trading without thorough testing"

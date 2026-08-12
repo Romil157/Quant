@@ -1,0 +1,79 @@
+# Backtest configuration
+project:
+  name: quant
+  version: 0.1.0
+
+data:
+  raw_root: data/raw
+  processed_root: data/processed
+  cache_root: data/cache
+  metadata_root: data/metadata
+
+logging:
+  level: INFO
+  format: "%(asctime)s %(levelname)s %(name)s: %(message)s"
+
+providers:
+  mock:
+    enabled: true
+  parquet:
+    enabled: false
+    data_root: data/raw
+    provider: default
+    asset_class: equities
+
+backtest:
+  start: "2018-01-01"
+  end: "2024-12-31"
+  timeframe: "1d"
+  initial_capital: 1000000
+  base_currency: "USD"
+
+strategy:
+  name: "momentum"
+  params:
+    lookback: 126
+    rebalance_freq: 21
+    top_n: 10
+
+portfolio:
+  construction: "equal_weight"
+  max_position: 0.10
+  target_volatility: 0.15
+  max_gross_exposure: 1.0
+  max_net_exposure: 0.5
+  long_only: true
+
+execution:
+  commission_bps: 2.0
+  spread_bps: 1.0
+  slippage_bps: 2.0
+  market_impact_bps: 0.0
+
+risk:
+  max_drawdown: 0.20
+  max_drawdown_action: "reduce_exposure"
+  var_confidence: 0.99
+  cvar_confidence: 0.95
+  stress_scenarios:
+    - name: "market_crash_5"
+      market_shock: -0.05
+    - name: "market_crash_10"
+      market_shock: -0.10
+    - name: "market_crash_20"
+      market_shock: -0.20
+    - name: "vol_spike_50"
+      vol_shock: 1.5
+    - name: "vol_spike_100"
+      vol_shock: 2.0
+
+benchmarks:
+  - "SPY"
+  - "CASH"
+
+output:
+  save_trades: true
+  save_equity_curve: true
+  save_positions: true
+  save_metrics: true
+  results_dir: reports/backtest

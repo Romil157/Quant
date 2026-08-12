@@ -1,0 +1,19 @@
+# Development configuration
+project:
+  name: quant
+  version: 0.1.0
+
+data:
+  raw_root: data/raw
+  processed_root: data/processed
+  cache_root: data/cache
+  metadata_root: data/metadata
+
+logging:
+  level: DEBUG
+  format: "%(asctime)s %(levelname)s %(name)s: %(message)s"
+
+# Placeholder for future provider config
+providers:
+  mock:
+    enabled: true
