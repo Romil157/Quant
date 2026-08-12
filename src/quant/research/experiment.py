@@ -157,6 +157,8 @@ class ExperimentTracker:
 
         return exp
 
+    ALLOWED_UPDATE_COLUMNS: set[str] = {"metrics", "status", "notes"}
+
     def update_experiment(
         self,
         experiment_id: str,
@@ -165,28 +167,43 @@ class ExperimentTracker:
         notes: str | None = None,
     ) -> bool:
         """Update experiment with results."""
+        fields = []
+        params = []
+
+        if metrics is not None and "metrics" in self.ALLOWED_UPDATE_COLUMNS:
+            fields.append("metrics")
+            params.append(json.dumps(metrics))
+        if status is not None and "status" in self.ALLOWED_UPDATE_COLUMNS:
+            fields.append("status")
+            params.append(status)
+        if notes is not None and "notes" in self.ALLOWED_UPDATE_COLUMNS:
+            fields.append("notes")
+            params.append(notes)
+
+        if not fields:
+            return False
+
+        key = tuple(fields)
+        queries = {
+            ("metrics",): "UPDATE experiments SET metrics = ? WHERE experiment_id = ?",
+            ("status",): "UPDATE experiments SET status = ? WHERE experiment_id = ?",
+            ("notes",): "UPDATE experiments SET notes = ? WHERE experiment_id = ?",
+            ("metrics", "status"): "UPDATE experiments SET metrics = ?, status = ? WHERE experiment_id = ?",
+            ("metrics", "notes"): "UPDATE experiments SET metrics = ?, notes = ? WHERE experiment_id = ?",
+            ("status", "notes"): "UPDATE experiments SET status = ?, notes = ? WHERE experiment_id = ?",
+            ("metrics", "status", "notes"): "UPDATE experiments SET metrics = ?, status = ?, notes = ? WHERE experiment_id = ?",
+        }
+
+        query = queries.get(key)
+        if not query:
+            return False
+
+        params.append(experiment_id)
         with self._get_conn() as conn:
-            updates = []
-            params = []
-
-            if metrics is not None:
-                updates.append("metrics = ?")
-                params.append(json.dumps(metrics))
-            if status is not None:
-                updates.append("status = ?")
-                params.append(status)
-            if notes is not None:
-                updates.append("notes = ?")
-                params.append(notes)
-
-            if not updates:
-                return False
-
-            params.append(experiment_id)
-            query = f"UPDATE experiments SET {', '.join(updates)} WHERE experiment_id = ?"
             cursor = conn.execute(query, params)
             conn.commit()
             return bool(cursor.rowcount > 0)
+
 
     def get_experiment(self, experiment_id: str) -> Experiment | None:
         """Get experiment by ID."""
