@@ -117,11 +117,20 @@ class StructuredLogger:
     def context(self, **kwargs):
         """Temporary context for logging."""
         old_context = self._context
-        self._context = LogContext(**kwargs)
+        req_id = kwargs.pop("request_id", str(uuid.uuid4())[:8])
+        user_id = kwargs.pop("user_id", None)
+        component = kwargs.pop("component", "quant")
+        self._context = LogContext(
+            request_id=req_id,
+            user_id=user_id,
+            component=component,
+            extra=kwargs,
+        )
         try:
             yield self
         finally:
             self._context = old_context
+
 
     def bind(self, **kwargs) -> StructuredLogger:
         """Bind additional context."""
