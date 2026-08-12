@@ -160,8 +160,9 @@ class SecurityConfig:
 @dataclass
 class ProductionConfig:
     """Complete production configuration."""
-    environment: str = "production"
+    environment: str = "development"
     debug: bool = False
+
 
     database: DatabaseConfig = field(default_factory=DatabaseConfig)
     redis: RedisConfig = field(default_factory=RedisConfig)

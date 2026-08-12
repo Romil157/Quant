@@ -21,7 +21,6 @@ from fastapi.responses import JSONResponse, PlainTextResponse
 from pydantic import BaseModel, Field
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
-
 from quant.backtest.engine import BacktestConfig, BacktestEngine
 from quant.data import download_data, validate_data
 from quant.ml import compare_models, run_ml_experiment
