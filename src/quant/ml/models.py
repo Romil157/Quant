@@ -98,18 +98,16 @@ class BaseMLModel(ABC):
 
     def predict(self, X: pd.DataFrame) -> np.ndarray:
         """Make predictions."""
-        if not self.is_fitted:
+        if not self.is_fitted or self.model is None:
             raise ValueError("Model not fitted")
-        assert self.model is not None
         # Ensure same columns
         X = X[self.feature_names]
         return self.model.predict(X)  # type: ignore
 
     def predict_proba(self, X: pd.DataFrame) -> np.ndarray:
         """Predict probabilities (classification only)."""
-        if not self.is_fitted:
+        if not self.is_fitted or self.model is None:
             raise ValueError("Model not fitted")
-        assert self.model is not None
         if not hasattr(self.model, 'predict_proba'):
             raise ValueError("Model does not support predict_proba")
         X = X[self.feature_names]
@@ -117,10 +115,10 @@ class BaseMLModel(ABC):
 
     def get_feature_importance(self) -> pd.DataFrame:
         """Get feature importance if available."""
-        if not self.is_fitted:
+        if not self.is_fitted or self.model is None:
             raise ValueError("Model not fitted")
-        assert self.model is not None
         model_step = self.model.named_steps['model']
+
 
         if hasattr(model_step, 'feature_importances_'):
             importances = model_step.feature_importances_

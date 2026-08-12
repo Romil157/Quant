@@ -169,10 +169,8 @@ class MLPipeline:
 
     def predict(self, data: dict[str, pd.DataFrame]) -> pd.DataFrame:
         """Generate predictions on new data."""
-        if not self.is_fitted:
+        if not self.is_fitted or self.feature_pipeline is None or self.model is None:
             raise ValueError("Pipeline not fitted")
-        assert self.feature_pipeline is not None
-        assert self.model is not None
 
         X = self.feature_pipeline.transform(data)
         X = self.feature_pipeline.fill_missing(X)
@@ -185,10 +183,8 @@ class MLPipeline:
 
     def predict_proba(self, data: dict[str, pd.DataFrame]) -> np.ndarray:
         """Predict probabilities (classification)."""
-        if not self.is_fitted:
+        if not self.is_fitted or self.feature_pipeline is None or self.model is None:
             raise ValueError("Pipeline not fitted")
-        assert self.feature_pipeline is not None
-        assert self.model is not None
 
         X = self.feature_pipeline.transform(data)
         X = self.feature_pipeline.fill_missing(X)
@@ -206,8 +202,10 @@ class MLPipeline:
 
     def _evaluate_test(self, X_test: pd.DataFrame, y_test: pd.Series) -> dict[str, float]:
         """Evaluate model on test set."""
-        assert self.model is not None
+        if self.model is None:
+            raise ValueError("Model object is None")
         y_pred = self.model.predict(X_test)
+
 
         if self.config.task == "regression":
             from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
@@ -321,8 +319,8 @@ def walk_forward_backtest(
         DataFrame with predictions and actuals
     """
     # Build features for full dataset
-    assert pipeline.feature_pipeline is not None
-    assert pipeline.model is not None
+    if pipeline.feature_pipeline is None or pipeline.model is None:
+        raise ValueError("Pipeline feature_pipeline and model must not be None")
     X, y = pipeline.feature_pipeline._build_features(data), pipeline.feature_pipeline._build_target(data)
     X = pipeline.feature_pipeline.fill_missing(X)
     y = y.loc[X.index]
@@ -348,8 +346,10 @@ def walk_forward_backtest(
         else:
             model = pipeline.model
 
-        assert model is not None
+        if model is None:
+            raise ValueError("Model object is None")
         y_pred = model.predict(X_test)
+
 
         pred_df = pd.DataFrame({
             'actual': y_test.values,
