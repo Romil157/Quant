@@ -196,12 +196,7 @@ class OnlineLearner:
             raise ValueError("predict_proba only for classification")
 
         X = X[self.feature_names]
-        if self.config.use_scaling:
-            if self.scaler is None:
-                raise ValueError("Scaler object is None")
-            X_scaled = self.scaler.transform(X)
-        else:
-            X_scaled = X.values
+        X_scaled = self.scaler.transform(X)
 
         if self.config.model_type in ["river_linear", "river_ensemble"]:
             probs = []
@@ -217,6 +212,7 @@ class OnlineLearner:
                 raise ValueError("Model object is None")
             return self.model.predict_proba(X_scaled)  # type: ignore
 
+
     def get_params(self) -> dict:
         return {
             'config': self.config.__dict__,
@@ -227,7 +223,7 @@ class OnlineLearner:
     def reset(self) -> OnlineLearner:
         """Reset model to initial state."""
         self._init_model()
-        self.scaler = StandardScaler() if self.config.use_scaling else None
+        self.scaler = StandardScaler()
         self.is_fitted = False
         self.n_samples_seen = 0
         self.feature_names = []
@@ -235,57 +231,80 @@ class OnlineLearner:
 
 
 class RollingRetrainer:
-    """Rolling retrainer for traditional models."""
+    """Periodically retrain model on rolling window."""
 
     def __init__(
         self,
-        base_model: Any,
-        window_size: int = 252,
-        retrain_frequency: int = 21,
-        use_scaler: bool = True,
+        base_model: BaseEstimator,
+        window_size: int = 1000,
+        retrain_freq: int = 100,
+        scaler: bool = True,
     ):
         self.base_model = base_model
         self.window_size = window_size
-        self.retrain_frequency = retrain_frequency
-        self.use_scaler = use_scaler
+        self.retrain_freq = retrain_freq
+        self.use_scaler = scaler
 
-        self.model: Any = None
-        self.scaler: StandardScaler | None = StandardScaler() if use_scaler else None
-        self.buffer_X: list[pd.Series] = []
-        self.buffer_y: list[float] = []
-        self.samples_since_retrain: int = 0
-        self.is_fitted: bool = False
+        self.model: BaseEstimator | None = None
+        self.scaler = StandardScaler() if scaler else None
+        self.buffer_X: list[pd.DataFrame] = []
+        self.buffer_y: list[pd.Series] = []
+        self.samples_since_retrain = 0
         self.feature_names: list[str] = []
+        self.is_fitted = False
 
-    def update(self, x: pd.Series, y: float) -> RollingRetrainer:
-        """Update with new sample."""
+    def partial_fit(self, X: pd.DataFrame, y: pd.Series) -> RollingRetrainer:
+        """Add data to buffer and retrain if needed."""
+        # Store feature names
         if not self.feature_names:
-            self.feature_names = list(x.index)
+            self.feature_names = list(X.columns)
+        else:
+            X = X[self.feature_names]
 
-        self.buffer_X.append(x)
+        # Add to buffer
+        self.buffer_X.append(X)
         self.buffer_y.append(y)
+        self.samples_since_retrain += len(X)
 
-        # Maintain window size
-        if len(self.buffer_X) > self.window_size:
-            self.buffer_X.pop(0)
-            self.buffer_y.pop(0)
+        # Trim buffer to window size
+        total_samples = sum(len(df) for df in self.buffer_X)
+        while total_samples > self.window_size:
+            # Remove from oldest
+            oldest = self.buffer_X[0]
+            oldest_y = self.buffer_y[0]
+            if len(oldest) <= total_samples - self.window_size:
+                total_samples -= len(oldest)
+                self.buffer_X.pop(0)
+                self.buffer_y.pop(0)
+            else:
+                # Trim oldest
+                trim = total_samples - self.window_size
+                self.buffer_X[0] = oldest.iloc[trim:]
+                self.buffer_y[0] = oldest_y.iloc[trim:]
+                total_samples = self.window_size
 
-        self.samples_since_retrain += 1
-
-        # Check if should retrain
-        if not self.is_fitted or self.samples_since_retrain >= self.retrain_frequency:
-            if len(self.buffer_X) >= self.window_size:
-                self._retrain()
-                self.samples_since_retrain = 0
+        # Retrain if frequency reached
+        if self.samples_since_retrain >= self.retrain_freq:
+            self._retrain()
+            self.samples_since_retrain = 0
 
         return self
 
     def _retrain(self) -> None:
-        """Retrain model on buffer."""
-        from sklearn.base import clone
+        """Retrain model on current buffer."""
+        if not self.buffer_X:
+            return
 
-        X_all = pd.DataFrame(self.buffer_X)
-        y_all = np.array(self.buffer_y)
+        X_all = pd.concat(self.buffer_X)
+        y_all = pd.concat(self.buffer_y)
+
+        # Remove NaN
+        valid = X_all.notna().all(axis=1) & y_all.notna()
+        X_all = X_all[valid]
+        y_all = y_all[valid]
+
+        if len(X_all) < 10:
+            return
 
         # Clone base model
         self.model = clone(self.base_model)
@@ -316,6 +335,7 @@ class RollingRetrainer:
             X_scaled = X
 
         return self.model.predict(X_scaled)  # type: ignore
+
 
     def force_retrain(self) -> RollingRetrainer:
         """Force immediate retrain."""
