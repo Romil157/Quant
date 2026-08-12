@@ -91,3 +91,25 @@ def test_dev_environment_auth_optional():
     app = create_app(config)
     assert app.title == "Quant Platform API"
 
+
+def test_generic_error_messages_returned_to_clients():
+    """Test that unexpected server exceptions return generic error detail rather than raw traceback/exception string."""
+    from fastapi.testclient import TestClient
+    from quant.production.api import create_app
+
+    config = ProductionConfig(environment="development")
+    config.security.api_key = ""
+    app = create_app(config)
+    client = TestClient(app)
+
+    # Test compare_models endpoint error mask
+    response = client.post(
+        "/api/v1/ml/compare",
+        json={"symbols": ["INVALID_SYM"], "start_date": "2023-01-01", "end_date": "2023-06-01"},
+    )
+    if response.status_code == 500:
+        assert response.json()["detail"] == "Internal server error, see logs"
+        assert "KeyError" not in response.json()["detail"]
+        assert "Exception" not in response.json()["detail"]
+
+

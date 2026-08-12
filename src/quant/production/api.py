@@ -335,7 +335,7 @@ def create_app(config: ProductionConfig | None = None) -> FastAPI:
 
             return BacktestResponse(
                 status="error",
-                error=str(e),
+                error="Internal server error, see logs",
                 execution_time=duration,
             )
 
@@ -395,7 +395,7 @@ def create_app(config: ProductionConfig | None = None) -> FastAPI:
 
             return MLExperimentResponse(
                 status="error",
-                error=str(e),
+                error="Internal server error, see logs",
                 execution_time=duration,
             )
 
@@ -428,7 +428,7 @@ def create_app(config: ProductionConfig | None = None) -> FastAPI:
             raise
         except Exception as e:
             logger.error("model_comparison_failed", error=str(e))
-            raise HTTPException(status_code=500, detail=str(e)) from e
+            raise HTTPException(status_code=500, detail="Internal server error, see logs") from e
 
     # Data endpoints
     @app.post(
@@ -464,7 +464,7 @@ def create_app(config: ProductionConfig | None = None) -> FastAPI:
             for symbol in request.symbols:
                 metrics.record_data_download(request.provider, symbol, "error")
             logger.error("data_download_failed", error=str(e))
-            raise HTTPException(status_code=500, detail=str(e)) from e
+            raise HTTPException(status_code=500, detail="Internal server error, see logs") from e
 
     @app.get(
         "/api/v1/data/validate/{symbol}",
@@ -486,7 +486,7 @@ def create_app(config: ProductionConfig | None = None) -> FastAPI:
             raise
         except Exception as e:
             logger.error("data_validation_failed", symbol=symbol, error=str(e))
-            raise HTTPException(status_code=500, detail=str(e)) from e
+            raise HTTPException(status_code=500, detail="Internal server error, see logs") from e
 
     # Config endpoint
     @app.get(
