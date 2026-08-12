@@ -71,3 +71,23 @@ def test_invalid_date_order_rejected():
 
     assert exc_info.value.status_code == 422
     assert "start_date must be earlier than end_date" in exc_info.value.detail
+
+
+def test_production_fail_closed_without_api_key():
+    """Test that creating app in production without API key raises RuntimeError at startup."""
+    from quant.production.api import create_app
+    config = ProductionConfig(environment="production")
+    config.security.api_key = ""
+    with pytest.raises(RuntimeError) as exc_info:
+        create_app(config)
+    assert "API key authentication must be configured in production" in str(exc_info.value)
+
+
+def test_dev_environment_auth_optional():
+    """Test that creating app in development environment without API key succeeds."""
+    from quant.production.api import create_app
+    config = ProductionConfig(environment="development")
+    config.security.api_key = ""
+    app = create_app(config)
+    assert app.title == "Quant Platform API"
+

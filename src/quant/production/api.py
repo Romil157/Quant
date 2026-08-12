@@ -121,7 +121,12 @@ async def verify_api_key(request: Request) -> None:
     config = _app_state.get("config") or get_config()
     expected_key = config.security.api_key
     if not expected_key:
-        return  # Auth disabled if no QUANT_API_KEY is configured
+        if config.environment == "production":
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Server configuration error: authentication required in production",
+            )
+        return  # Auth disabled if no QUANT_API_KEY is configured in dev/test
 
     header_name = config.security.api_key_header
     provided_key = request.headers.get(header_name)
@@ -137,6 +142,9 @@ async def lifespan(app: FastAPI):
     """Application lifespan manager."""
     config = get_config()
 
+    if config.environment == "production" and not config.security.api_key:
+        raise RuntimeError("API key authentication must be configured in production environment (QUANT_API_KEY environment variable missing)")
+
     # Configure logging
     configure_logging(
         level=config.monitoring.log_level,
@@ -146,6 +154,9 @@ async def lifespan(app: FastAPI):
 
     logger = get_logger("api")
     logger.info("api_starting", environment=config.environment)
+
+    if not config.security.api_key:
+        logger.warning("api_key_auth_disabled", environment=config.environment, message="API Key authentication is disabled because QUANT_API_KEY is missing")
 
     # Initialize metrics
     metrics = get_metrics_collector()
@@ -172,6 +183,10 @@ def create_app(config: ProductionConfig | None = None) -> FastAPI:
     """Create FastAPI application."""
     if config is None:
         config = get_config()
+
+    if config.environment == "production" and not config.security.api_key:
+        raise RuntimeError("API key authentication must be configured in production environment (QUANT_API_KEY environment variable missing)")
+
 
     app = FastAPI(
         title="Quant Platform API",
