@@ -1,6 +1,6 @@
 [project]
 name = "quant"
-version = "0.1.0"
+version = "0.2.0"
 description = "Quantitative finance research and backtesting platform"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -24,12 +24,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = [
-    "pytest>=8.0",
-    "pytest-cov>=4.1",
-    "ruff>=0.4",
-    "mypy>=1.9",
-]
+live = ["yfinance>=0.2.40"]
 
 [dependency-groups]
 dev = [
@@ -57,6 +52,11 @@ target-version = "py312"
 [tool.ruff.lint]
 select = ["E", "F", "I", "W", "UP", "B", "C4", "SIM", "T20"]
 ignore = ["E501"]
+
+[tool.ruff.lint.per-file-ignores]
+# CLI scripts and the dashboard are entry points that intentionally print to stdout/stderr
+"scripts/*.py" = ["T201"]
+"dashboard/*.py" = ["T201"]
 
 
 [tool.mypy]

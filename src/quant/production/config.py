@@ -253,6 +253,10 @@ def load_config_from_env(config: ProductionConfig) -> ProductionConfig:
     if debug := os.getenv("DEBUG"):
         config.debug = debug.lower() == "true"
 
+    # Monitoring
+    if log_level := os.getenv("LOG_LEVEL"):
+        config.monitoring.log_level = log_level.upper()
+
     return config
 
 

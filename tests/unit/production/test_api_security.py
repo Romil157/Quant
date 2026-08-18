@@ -92,7 +92,7 @@ def test_dev_environment_auth_optional():
     assert app.title == "Quant Platform API"
 
 
-def test_generic_error_messages_returned_to_clients():
+def test_generic_error_messages_returned_to_clients(monkeypatch):
     """Test that unexpected server exceptions return generic error detail rather than raw traceback/exception string."""
     from quant.production.api import MLExperimentRequest, create_app
 
@@ -100,12 +100,22 @@ def test_generic_error_messages_returned_to_clients():
     config.security.api_key = ""
     app = create_app(config)
     compare_route = next(r for r in app.routes if getattr(r, "path", None) == "/api/v1/ml/compare")
+
+    # Force the data layer to blow up so the endpoint's except handler runs.
+    def boom(*_args, **_kwargs):
+        raise RuntimeError("simulated runtime failure 0xDEADBEEF")
+
+    import quant.production.api as api_module
+    monkeypatch.setattr(api_module, "download_data", boom)
+
     req = MLExperimentRequest(symbols=["INVALID_SYM"], start_date="2023-01-01", end_date="2023-06-01")
     with pytest.raises(HTTPException) as exc_info:
         asyncio.run(compare_route.endpoint(req))
 
     assert exc_info.value.status_code == 500
     assert exc_info.value.detail == "Internal server error, see logs"
+    # The raw exception text must not leak into the response detail.
+    assert "0xDEADBEEF" not in exc_info.value.detail
 
 
 def test_production_allowed_hosts_wildcard_rejected():

@@ -24,6 +24,7 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 from quant.backtest.engine import BacktestConfig, BacktestEngine
 from quant.data import download_data, validate_data
 from quant.ml import compare_models, run_ml_experiment
+from quant.portfolio.construction import PortfolioConstraints
 from quant.production.config import ProductionConfig, get_config
 from quant.production.monitoring import (
     configure_logging,
@@ -32,6 +33,7 @@ from quant.production.monitoring import (
     get_metrics_collector,
     log_context,
 )
+from quant.strategies import STRATEGY_REGISTRY, create_strategy
 
 # Input bounds constants
 MAX_SYMBOLS = 50
@@ -42,7 +44,7 @@ def validate_request_bounds(symbols: list[str], start_date_str: str, end_date_st
     """Validate request size and date range guardrails."""
     if len(symbols) > MAX_SYMBOLS:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=f"Symbol count exceeds maximum limit of {MAX_SYMBOLS}",
         )
     try:
@@ -50,17 +52,17 @@ def validate_request_bounds(symbols: list[str], start_date_str: str, end_date_st
         end = datetime.fromisoformat(end_date_str)
     except ValueError as e:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="Invalid ISO date format for start_date or end_date",
         ) from e
     if start >= end:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="start_date must be earlier than end_date",
         )
     if (end - start).days > MAX_DATE_RANGE_DAYS:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=f"Date range exceeds maximum limit of {MAX_DATE_RANGE_DAYS} days",
         )
 
@@ -73,6 +75,7 @@ class BacktestRequest(BaseModel):
     end_date: str
     initial_capital: float = 100000
     parameters: dict[str, Any] = Field(default_factory=dict)
+    provider: str = "mock"
 
 
 class BacktestResponse(BaseModel):
@@ -307,10 +310,11 @@ def create_app(config: ProductionConfig | None = None) -> FastAPI:
             end_date = datetime.fromisoformat(request.end_date)
 
             # Download data
-            download_data(
+            data = download_data(
                 symbols=request.symbols,
                 start_date=request.start_date,
                 end_date=request.end_date,
+                provider=request.provider,
             )
 
             # Validate
@@ -324,9 +328,50 @@ def create_app(config: ProductionConfig | None = None) -> FastAPI:
                 start_date=request.start_date,
                 end_date=request.end_date,
             )
+            bt_config.portfolio_constraints = PortfolioConstraints(
+                max_position=1.0,
+                max_gross_exposure=1.0,
+                max_net_exposure=1.0,
+                long_only=True,
+            )
 
-            BacktestEngine(bt_config)
-            results = {"placeholder": "backtest results"}
+            if request.strategy not in STRATEGY_REGISTRY:
+                valid = ", ".join(sorted(STRATEGY_REGISTRY))
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Unknown strategy {request.strategy!r}. Valid: {valid}",
+                )
+
+            # Filter params to those accepted by the strategy's __init__ to
+            # avoid brittle TypeErrors from mismatched JSON payloads.
+            import inspect
+
+            sig = inspect.signature(STRATEGY_REGISTRY[request.strategy].__init__)
+            accepted = {
+                n for n, p in sig.parameters.items()
+                if n != "self" and p.kind in (p.POSITIONAL_OR_KEYWORD, p.KEYWORD_ONLY)
+            }
+            filtered_params = {k: v for k, v in request.parameters.items() if k in accepted}
+
+            try:
+                strategy = create_strategy(request.strategy, **filtered_params)
+            except TypeError as e:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Strategy {request.strategy!r} rejected parameters {filtered_params}: {e}",
+                ) from e
+
+            engine = BacktestEngine(bt_config)
+            engine.set_strategy(strategy)
+            results = engine.run(data)
+
+            results_payload = {
+                "final_equity": float(results.get("final_equity", request.initial_capital)),
+                "total_return": float(results.get("total_return", 0.0)),
+                "max_drawdown_hit": bool(results.get("max_drawdown_hit", False)),
+                "num_orders": len(results.get("orders", [])),
+                "num_fills": len(results.get("fills", [])),
+            }
 
             duration = time.time() - start_time
             metrics.record_backtest(request.strategy, "success", duration)
@@ -334,7 +379,7 @@ def create_app(config: ProductionConfig | None = None) -> FastAPI:
 
             return BacktestResponse(
                 status="success",
-                results=results,
+                results=results_payload,
                 execution_time=duration,
             )
 

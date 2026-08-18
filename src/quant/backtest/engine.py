@@ -196,17 +196,35 @@ class BacktestEngine:
         # Update peak
         if current_equity > self.peak_equity:
             self.peak_equity = current_equity
+            # Recovered to a new peak -> re-arm the drawdown tripwire.
+            self.max_drawdown_hit = False
 
         # Check drawdown
+        if self.peak_equity <= 0:
+            return
         drawdown = (self.peak_equity - current_equity) / self.peak_equity
         if drawdown > self.config.max_drawdown:
+            if self.config.max_drawdown_action == "reduce_exposure" and not self.max_drawdown_hit:
+                # Reduce every open position by half once per drawdown episode.
+                for symbol, pos in list(self.portfolio.positions.items()):
+                    if pos.quantity == 0:
+                        continue
+                    price = self.current_prices.get(symbol)
+                    if not price or price <= 0:
+                        continue
+                    reduce_qty = abs(pos.quantity) / 2.0
+                    if reduce_qty <= 0:
+                        continue
+                    side = OrderSide.SELL if pos.quantity > 0 else OrderSide.BUY
+                    order = Order(
+                        symbol=symbol,
+                        side=side,
+                        quantity=reduce_qty,
+                        order_type=OrderType.MARKET,
+                        timestamp=self.current_time,
+                    )
+                    self._submit_order(order)
             self.max_drawdown_hit = True
-            if self.config.max_drawdown_action == "reduce_exposure":
-                # Reduce all positions by half
-                for pos in self.portfolio.positions.values():
-                    if pos.quantity != 0:
-                        # Create reduction order
-                        pass  # TODO: implement
 
     def _construct_portfolio(self, signals: pd.Series) -> pd.Series:
         """Construct target portfolio from signals."""
@@ -308,11 +326,17 @@ class BacktestEngine:
 
         self.fills.append(fill)
 
-        # Update portfolio
-        price = fill.price
+        # Update portfolio: cash impact sign depends on side. Previously the
+        # engine subtracted fill.net_value for both BUY and SELL, which
+        # incorrectly charged cash (instead of crediting) when selling.
         qty = fill.quantity if fill.side == OrderSide.BUY else -fill.quantity
-        self.portfolio.cash -= fill.net_value
-        self.portfolio.update_position(fill.symbol, qty, price)
+        if fill.side == OrderSide.BUY:
+            # Buyer pays notional plus commission.
+            self.portfolio.cash -= fill.value + fill.commission
+        else:
+            # Seller receives notional minus commission.
+            self.portfolio.cash += fill.value - fill.commission
+        self.portfolio.update_position(fill.symbol, qty, fill.price)
 
     def _record_state(self) -> None:
         """Record current portfolio state."""

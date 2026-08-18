@@ -54,6 +54,20 @@ class ResearchReport:
         fills = results.get('fills', [])
         account_history = results.get('account_history', [])
 
+        # Ensure equity/returns have DatetimeIndex for monthly resampling
+        def _ensure_dtindex(series: pd.Series, account_history: list) -> pd.Series:
+            if not isinstance(series, pd.Series) or isinstance(series.index, pd.DatetimeIndex):
+                return series
+            if account_history:
+                timestamps = [a.timestamp for a in account_history]
+                if len(timestamps) == len(series):
+                    return series.set_axis(pd.DatetimeIndex(timestamps))
+            # Fallback: business-day range ending at today
+            return series.set_axis(pd.bdate_range(end=pd.Timestamp.now(), periods=len(series)))
+
+        equity = _ensure_dtindex(equity, account_history)
+        returns = _ensure_dtindex(returns, account_history)
+
         if returns is None or equity is None:
             raise ValueError("Results must contain returns and equity_curve")
 
@@ -120,7 +134,11 @@ class ResearchReport:
 
         # Returns
         total_return = float((equity.iloc[-1] / equity.iloc[0]) - 1)
-        cagr = float((1 + total_return) ** (252 / len(returns)) - 1)
+        # CAGR: handle case where total_return <= -1 (equity would be negative/zero)
+        # In practice this shouldn't happen with long-only + max_position < 1, but
+        # mock data can violate it. Clamp to -99% return as worst case.
+        cagr_base = max(1 + total_return, 0.01)
+        cagr = float(cagr_base ** (252 / len(returns)) - 1)
         ann_vol = float(returns.std() * np.sqrt(252))
 
         # Risk-adjusted

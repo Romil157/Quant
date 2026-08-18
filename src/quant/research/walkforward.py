@@ -98,7 +98,10 @@ class WalkForwardValidator:
             val_data = self._slice_data(data, val_start, val_end)
             test_data = self._slice_data(data, test_start, test_end)
 
-            if not train_data or len(train_data) < self.config.min_train_size:
+            # Minimum training bars refers to the number of rows in the slice,
+            # not the number of symbols in the dict.
+            train_bars = max((len(df) for df in train_data.values()), default=0)
+            if train_bars < self.config.min_train_size:
                 continue
 
             # Parameter optimization on train + validation

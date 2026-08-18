@@ -3,6 +3,7 @@ from datetime import datetime
 
 import numpy as np
 import pandas as pd
+import pytest
 
 from quant.backtest.engine import BacktestConfig, BacktestEngine, Strategy
 from quant.backtest.execution import ExecutionConfig
@@ -183,3 +184,54 @@ def test_backtest_results_structure():
 
     for key in required_keys:
         assert key in results, f"Missing key: {key}"
+
+
+def test_risk_reduce_exposure_submits_halving_order():
+    """When drawdown breaches the limit, the engine should reduce every position by half."""
+    # Trending down market so the equity drops materially.
+    symbols = ["AAPL", "MSFT"]
+    data = {sym: create_test_data(sym, 30) for sym in symbols}
+
+    # First-bar buys on AAPL, then prices fall hard across both symbols.
+    prices_aapl = data["AAPL"]["close"].copy()
+    prices_msft = data["MSFT"]["close"].copy()
+    decay = np.linspace(1.0, 0.5, 30)
+    data["AAPL"]["close"] = prices_aapl * decay
+    data["AAPL"]["open"] *= decay
+    data["AAPL"]["high"] *= decay
+    data["AAPL"]["low"] *= decay
+    data["MSFT"]["close"] = prices_msft * decay
+    data["MSFT"]["open"] *= decay
+    data["MSFT"]["high"] *= decay
+    data["MSFT"]["low"] *= decay
+
+    class HoldStrategy(Strategy):
+        """Long AAPL on the first bar; never re-signal."""
+
+        def __init__(self):
+            self.bars = 0
+
+        def generate_signals(self, data_inner: pd.DataFrame, current_time: datetime) -> pd.Series:
+            self.bars += 1
+            if self.bars == 1:
+                return pd.Series({"AAPL": 1.0})
+            return pd.Series(dtype=float)
+
+    config = BacktestConfig(initial_capital=100_000, max_drawdown=0.05)
+    engine = BacktestEngine(config)
+    engine.set_strategy(HoldStrategy())
+
+    # First run bar-by-bar by calling engine.run, then inspect orders.
+    engine.run(data)
+
+    # The risk reducer should have issued at least one SELL order on AAPL
+    # (half of the long position) once the drawdown exceeded 5%.
+    sell_orders = [o for o in engine.orders if o.side.value == "sell"]
+    assert len(sell_orders) >= 1, "Expected at least one SELL risk-reduction order"
+    # The first SELL should be roughly half of the established long quantity.
+    long_fills = [f for f in engine.fills if f.side.value == "buy"]
+    assert long_fills, "Expected a BUY fill on the first bar"
+    first_long_qty = long_fills[0].quantity
+    first_sell = sell_orders[0]
+    assert first_sell.quantity == pytest.approx(first_long_qty / 2.0, rel=0.01)
+    assert engine.max_drawdown_hit is True

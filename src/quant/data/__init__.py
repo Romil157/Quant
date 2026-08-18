@@ -20,7 +20,8 @@ def download_data(
 ) -> dict[str, pd.DataFrame]:
     """Download data for given symbols using specified provider."""
     if provider == "mock":
-        prov = ProviderFactory.create_provider(provider)
+        # Allow the MockProvider to actually respond for the requested symbols.
+        prov = ProviderFactory.create_provider(provider, symbols=symbols)
     else:
         root = data_root or Path("data/raw")
         prov = ProviderFactory.create_provider(provider, data_root=root)
@@ -46,7 +47,7 @@ def validate_data(
 
     end = datetime.fromisoformat(end_date) if isinstance(end_date, str) else end_date
 
-    prov = ProviderFactory.create_provider("mock")
+    prov = ProviderFactory.create_provider("mock", symbols=[symbol])
     try:
         df = prov.get_historical_data(symbol, start, end)
         res = validate_ohlc_relationships(df)

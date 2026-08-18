@@ -1,9 +1,12 @@
 """Strategies package."""
 from quant.strategies.builtins import (
+    STRATEGY_REGISTRY,
     BreakoutStrategy,
+    BuyAndHoldStrategy,
     MeanReversionStrategy,
     MomentumStrategy,
     PairTradingStrategy,
+    create_strategy,
 )
 from quant.strategies.signals import (
     BreakoutSignalStrategy,
@@ -14,6 +17,7 @@ from quant.strategies.signals import (
 )
 
 __all__ = [
+    "BuyAndHoldStrategy",
     "MomentumStrategy",
     "MeanReversionStrategy",
     "BreakoutStrategy",
@@ -23,4 +27,6 @@ __all__ = [
     "BreakoutSignalStrategy",
     "MACDMomentumStrategy",
     "DualMomentumStrategy",
+    "STRATEGY_REGISTRY",
+    "create_strategy",
 ]

@@ -4,6 +4,7 @@ from pathlib import Path
 from quant.data.providers.base import MarketDataProvider
 from quant.data.providers.mock import MockProvider
 from quant.data.providers.parquet import ParquetProvider
+from quant.data.providers.yfinance_provider import YFinanceProvider
 
 
 class ProviderFactory:
@@ -23,6 +24,8 @@ class ProviderFactory:
         elif provider_type == "parquet":
             data_root = kwargs.pop("data_root", Path("data/raw"))
             return ParquetProvider(data_root=data_root, **kwargs)
+        elif provider_type == "yfinance":
+            return YFinanceProvider(**kwargs)
         else:
             raise ValueError(f"Unknown provider type: {provider_type}")
 

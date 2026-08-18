@@ -9,7 +9,6 @@ import pandas as pd
 from sklearn.base import BaseEstimator, clone
 from sklearn.linear_model import (
     PassiveAggressiveClassifier,
-    PassiveAggressiveRegressor,
     SGDClassifier,
     SGDRegressor,
 )
@@ -88,8 +87,14 @@ class OnlineLearner:
 
         elif self.config.model_type == "passive_aggressive":
             if self.config.task == "regression":
-                self.model = PassiveAggressiveRegressor(
-                    C=1.0 / self.config.alpha,
+                # PassiveAggressiveRegressor was deprecated in sklearn 1.8
+                # and will be removed in 1.10. Equivalent configured as an
+                # SGDRegressor with the PA1 learning rule and no penalty.
+                self.model = SGDRegressor(
+                    loss="epsilon_insensitive",
+                    penalty=None,
+                    learning_rate="pa1",
+                    eta0=1.0,
                     max_iter=self.config.max_iter,
                     tol=self.config.tol,
                     shuffle=self.config.shuffle,
