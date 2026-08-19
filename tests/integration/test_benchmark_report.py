@@ -1,10 +1,6 @@
 """Integration test for cross-strategy benchmark reporting."""
-import subprocess
-import sys
 import tempfile
 from pathlib import Path
-
-import pytest
 
 from quant.backtest.engine import BacktestConfig, BacktestEngine
 from quant.backtest.execution import ExecutionConfig
@@ -30,7 +26,7 @@ def test_cross_strategy_benchmark_execution():
     )
 
     results_by_strategy = {}
-    for strategy_name in STRATEGY_REGISTRY.keys():
+    for strategy_name in STRATEGY_REGISTRY:
         strategy = create_strategy(strategy_name)
         engine = BacktestEngine(bt_config)
         engine.set_strategy(strategy)
@@ -58,7 +54,7 @@ def test_benchmark_html_report_generation():
 <h1>Cross-Strategy Benchmark</h1>
 <table>
 <tr><th>Strategy</th><th>Sharpe</th></tr>
-{"".join(f"<tr><td>{name}</td><td>1.25</td></tr>" for name in STRATEGY_REGISTRY.keys())}
+{"".join(f"<tr><td>{name}</td><td>1.25</td></tr>" for name in STRATEGY_REGISTRY)}
 </table>
 </body>
 </html>"""
@@ -67,5 +63,5 @@ def test_benchmark_html_report_generation():
         assert report_file.exists()
         content = report_file.read_text(encoding="utf-8")
         assert "Cross-Strategy Benchmark" in content
-        for name in STRATEGY_REGISTRY.keys():
+        for name in STRATEGY_REGISTRY:
             assert name in content

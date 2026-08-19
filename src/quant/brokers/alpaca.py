@@ -1,11 +1,10 @@
 """Alpaca paper and live trading adapter implementation."""
 from __future__ import annotations
 
-import asyncio
 from datetime import datetime
 from typing import Any
 
-from quant.backtest.types import Order, OrderSide, OrderStatus, OrderType, Position
+from quant.backtest.types import Order, OrderSide, OrderStatus, Position
 from quant.brokers.base import BrokerAdapter
 from quant.production.monitoring import get_logger
 

@@ -3,7 +3,6 @@ from datetime import datetime
 
 import numpy as np
 import pandas as pd
-import pytest
 
 from quant.backtest.engine import BacktestConfig, Strategy
 from quant.backtest.execution import ExecutionConfig

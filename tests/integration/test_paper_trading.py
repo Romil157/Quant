@@ -1,7 +1,6 @@
 """Integration tests for paper trading engine."""
 import asyncio
 from datetime import datetime
-from pathlib import Path
 
 import pandas as pd
 import pytest

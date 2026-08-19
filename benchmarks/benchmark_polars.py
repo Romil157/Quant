@@ -4,11 +4,13 @@
 Measures wall-clock time, throughput (bars/second), and memory usage.
 """
 import time
+
 import numpy as np
 import pandas as pd
 
 try:
     import polars as pl
+
     POLARS_AVAILABLE = True
 except ImportError:
     POLARS_AVAILABLE = False
@@ -21,13 +23,13 @@ def benchmark_pandas_features(n_bars: int = 100_000) -> float:
     df = pd.DataFrame({"close": prices})
 
     t0 = time.perf_counter()
-    sma20 = df["close"].rolling(20).mean()
-    vol20 = df["close"].pct_change().rolling(20).std()
+    _sma20 = df["close"].rolling(20).mean()
+    _vol20 = df["close"].pct_change().rolling(20).std()
     delta = df["close"].diff()
     gain = delta.clip(lower=0).rolling(14).mean()
     loss = (-delta.clip(upper=0)).rolling(14).mean()
     rs = gain / (loss + 1e-10)
-    rsi = 100 - (100 / (1 + rs))
+    _rsi = 100 - (100 / (1 + rs))
     t1 = time.perf_counter()
 
     elapsed = t1 - t0
@@ -44,7 +46,7 @@ def benchmark_polars_features(n_bars: int = 100_000) -> float:
     df = pl.DataFrame({"close": prices})
 
     t0 = time.perf_counter()
-    df_feat = df.with_columns([
+    _df_feat = df.with_columns([
         pl.col("close").rolling_mean(window_size=20).alias("sma20"),
         pl.col("close").pct_change().rolling_std(window_size=20).alias("vol20"),
     ])

@@ -1,5 +1,4 @@
 """Unit tests for ML concept drift detection."""
-import pytest
 
 from quant.ml.online import DriftDetector
 
@@ -25,7 +24,7 @@ def test_drift_detection_sudden_shock():
 
     # 10 high-error observations (regime shift)
     for _ in range(10):
-        drift = detector.update(10.0, 30.0)
+        _ = detector.update(10.0, 30.0)
 
     # Window now contains 10 baseline errors (0.01) and 10 large errors (400.0)
     assert detector.drift_detected is True

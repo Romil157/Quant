@@ -1,6 +1,5 @@
 """Unit tests for AlpacaBrokerAdapter."""
 import asyncio
-import pytest
 
 from quant.backtest.types import Order, OrderSide, OrderType
 from quant.brokers.alpaca import AlpacaAdapter

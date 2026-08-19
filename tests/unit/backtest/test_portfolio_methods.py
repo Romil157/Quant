@@ -20,7 +20,7 @@ class MultiSymbolSignalStrategy(Strategy):
     def generate_signals(self, data: pd.DataFrame, current_time: datetime) -> pd.Series:
         self.bars += 1
         # Generate positive signals on every bar
-        return pd.Series({s: 1.0 for s in self.symbols})
+        return pd.Series(dict.fromkeys(self.symbols, 1.0))
 
 
 def create_multisymbol_data(symbols: list[str], days: int = 120) -> dict[str, pd.DataFrame]:
@@ -111,7 +111,7 @@ def test_construction_methods_produce_distinct_weights():
         for s in symbols:
             engine.price_history[s] = list(data[s]["close"].values)
 
-        active_signals = pd.Series({s: 1.0 for s in symbols})
+        active_signals = pd.Series(dict.fromkeys(symbols, 1.0))
         target_weights = engine._construct_portfolio(active_signals)
         weights_by_method[method] = target_weights
 

@@ -16,7 +16,7 @@ import pandas as pd
 
 from quant.backtest.engine import BacktestConfig, BacktestEngine
 from quant.backtest.execution import ExecutionConfig
-from quant.backtest.types import Fill, Order, OrderSide, OrderStatus, OrderType, Position
+from quant.backtest.types import Fill, Order, OrderSide, OrderType, Position
 from quant.portfolio.construction import PortfolioConstraints
 from quant.production.monitoring import get_logger, get_metrics_collector
 

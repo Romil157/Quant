@@ -8,12 +8,6 @@ from __future__ import annotations
 
 import argparse
 import sys
-from datetime import datetime
-from pathlib import Path
-from typing import Any
-
-import pandas as pd
-import yaml
 
 from quant.backtest.engine import BacktestConfig, BacktestEngine
 from quant.backtest.execution import ExecutionConfig
@@ -54,7 +48,7 @@ def main() -> None:
     )
 
     results = {}
-    for name in STRATEGY_REGISTRY.keys():
+    for name in STRATEGY_REGISTRY:
         try:
             strategy = create_strategy(name)
             engine = BacktestEngine(bt_config)

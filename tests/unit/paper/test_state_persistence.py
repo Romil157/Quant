@@ -1,6 +1,5 @@
 """Unit tests for paper trading state persistence using SQLite."""
 from datetime import datetime
-from pathlib import Path
 
 import pytest
 

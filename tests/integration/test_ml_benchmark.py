@@ -1,6 +1,5 @@
 """Integration test for ML benchmark comparison."""
 import pandas as pd
-import pytest
 
 from quant.data import download_data
 from quant.ml.features import create_minimal_pipeline
