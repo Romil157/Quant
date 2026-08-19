@@ -366,6 +366,10 @@ class MetricsCollector:
         """Record job execution metrics."""
         pass
 
+    def record_risk_event(self, event_type: str):
+        """Record a risk event (drawdown breach, daily loss breach, etc.)."""
+        ERROR_COUNT.labels(component="risk", error_type=event_type).inc()
+
 
     def get_metrics(self) -> bytes:
         """Get Prometheus metrics."""

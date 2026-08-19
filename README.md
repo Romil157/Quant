@@ -7,10 +7,7 @@
 [![Pytest](https://img.shields.io/badge/Tests-pytest-0A9EDC?logo=pytest&logoColor=white)](https://docs.pytest.org/)
 [![License: Proprietary](https://img.shields.io/badge/License-Proprietary-red)](#license)
 
-A modular, production-hardened quantitative-finance research, backtesting, and
-production engine built with Python 3.12, FastAPI, Pandas/Polars, PyArrow,
-scikit-learn, and Streamlit. Designed for high performance, modularity, and
-strict operational security.
+A modular, production-hardened quantitative-finance research, backtesting, and production engine built with Python 3.12, FastAPI, Pandas/Polars, PyArrow, scikit-learn, and Streamlit. Designed for high performance, modularity, and strict operational security.
 
 ---
 
@@ -37,31 +34,19 @@ strict operational security.
 
 ## Key features
 
-- **Event-driven backtester** — In-memory engine with realistic transaction-cost
-  modeling (commission, spread, slippage, market impact), portfolio tracking,
-  drawdown-aware risk reduction, and `100`+ test scenarios.
-- **Built-in strategies** — `buy_and_hold`, `momentum`, `mean_reversion`,
-  `breakout` (Donchian + ATR), `macd` (trend-filtered), `dual_momentum`
-  (Antonacci), and `pair_trading` (z-score). Dispatched from a single
-  `STRATEGY_REGISTRY` used by the CLI scripts, the API, and the dashboard.
-- **Machine-learning engine** — Time-series cross-validation (`TimeSeriesCV`),
-  feature engineering pipelines, online learning ensembles (`OnlineEnsemble`),
-  Passive-Aggressive (now via `SGDRegressor` PA1 — sklearn 1.10-proof), drifting
-  detection, and automated model comparison.
-- **Portfolio & risk management** — Multi-asset portfolio construction (Equal
-  Weight, Risk Parity, Inverse Volatility, Minimum Variance, Volatility
-  Targeting, Mean-Variance, Maximum Sharpe) with VaR, CVaR, and stress testing.
-- **Production REST API** — FastAPI server with security headers, API-key
-  auth, request guardrails, TrustedHost middleware, and Prometheus metrics.
-- **Cross-platform launcher** — `run.bat` (Windows) and `run.sh` (macOS/Linux)
-  menus for backtest, research, download, tests, lint, dashboard, and API.
-- **Research dashboard** — Streamlit app rendering equity curve, drawdown,
-  return distribution, and headline risk metrics from the analytics module.
-- **Security & secret redaction** — Automatic secret masking in
-  logs/representations, CORS hardening, path-traversal protection, and safe
-  YAML parsing.
-- **Monitoring & alerting** — Structured logging (`structlog`), health-check
-  system, job scheduler (`APScheduler`), and configurable alert triggers.
+- **Event-driven backtester** — In-memory engine with realistic transaction-cost modeling (commission, spread, slippage, market impact), portfolio tracking, drawdown-aware risk reduction, and `210`+ test scenarios.
+- **Real portfolio construction** — Rolling volatility and covariance powering Inverse Volatility, Volatility Targeting, Risk Parity, Minimum Variance, Mean-Variance, and Maximum Sharpe optimizers.
+- **Built-in strategies** — `buy_and_hold`, `momentum`, `mean_reversion`, `breakout` (Donchian + ATR), `macd` (trend-filtered), `dual_momentum` (Antonacci), and `pair_trading` (z-score). Dispatched from a single `STRATEGY_REGISTRY` used by the CLI scripts, the API, and the dashboard.
+- **Machine-learning engine** — Time-series cross-validation (`TimeSeriesCV`), feature engineering pipelines, online learning ensembles (`OnlineEnsemble`), SGD-based Passive-Aggressive (sklearn 1.10-proof), drift detection, and automated model comparison.
+- **Portfolio & risk management** — Multi-asset portfolio construction (Equal Weight, Risk Parity, Inverse Volatility, Minimum Variance, Volatility Targeting, Mean-Variance, Maximum Sharpe) with VaR, CVaR, and stress testing.
+- **Production REST API** — FastAPI server with security headers, API-key auth, request guardrails, TrustedHost middleware, and Prometheus metrics.
+- **Walk-forward research pipeline** — Standardized walk-forward validation with parameter sensitivity, multiple-testing correction (Bonferroni), and HTML reports.
+- **Cross-strategy benchmark** — One-command comparison of all strategies on identical data/costs with HTML report.
+- **Cross-platform launcher** — `run.bat` (Windows) and `run.sh` (macOS/Linux) menus for backtest, research, download, tests, lint, dashboard, and API.
+- **Research dashboard** — Streamlit app rendering equity curve, drawdown, daily-returns distribution, and headline risk metrics from the analytics module.
+- **Security & secret redaction** — Automatic secret masking in logs/representations, CORS hardening, path-traversal protection, and safe YAML parsing.
+- **Monitoring & alerting** — Structured logging (`structlog`), health-check system, job scheduler (`APScheduler`), and configurable alert triggers.
+- **Look-ahead bias free** — All features, signals, and engine components audited and verified free of look-ahead bias.
 
 ---
 
@@ -74,13 +59,19 @@ Quant/
 ├─ data/                       # Raw, processed, cache, and metadata (Parquet + DuckDB)
 ├─ dashboard/                  # Streamlit research dashboard
 │   └─ app.py
+├─ docs/                       # Documentation
+│   ├─ RESEARCH_STANDARD.md
+│   ├─ LOOKAHEAD_AUDIT.md
+│   ├─ ALERTING.md
+│   ├─ DRIFT_POLICY.md
+│   └─ PAPER_TRADING.md
 ├─ models/                     # Persisted ML artifacts
 ├─ notebooks/                  # Exploratory research notebooks
 ├─ reports/                    # Generated performance & backtest reports
-├─ scripts/                    # CLI scripts (download, validate, backtest, research, report)
-├─ tests/                      # Unit + integration + security test suite (~210 tests)
+├─ scripts/                    # CLI scripts (download, validate, backtest, research, benchmark, report)
+├─ tests/                      # Unit + integration + security test suite (~220 tests)
 │   ├─ unit/
-│   └─ integration/            # (placeholder for cross-module flows)
+│   └─ integration/            # Cross-module flows
 ├─ src/quant/                  # Core platform package
 │   ├─ __init__.py
 │   ├─ __main__.py             # `python -m quant`
@@ -91,6 +82,7 @@ Quant/
 │   ├─ data/                   # Providers (mock, parquet, yfinance), validation, cleaning
 │   ├─ features/               # Microstructure, statistical, technical, volatility
 │   ├─ ml/                     # Models, TimeSeriesCV, feature pipeline, online learning
+│   ├─ paper/                  # Paper trading engine, state, data feed, risk
 │   ├─ portfolio/              # Portfolio optimization & constraint engine
 │   ├─ production/             # FastAPI server, monitoring, scheduler, alerting, config
 │   ├─ research/               # Walk-forward analysis, experiment tracker, report generator
@@ -112,7 +104,7 @@ git clone <your-repo-url> Quant
 cd Quant
 uv sync --all-extras --dev           # installs runtime + dev + yfinance optional
 uv run python -m quant hello         # health check
-uv run pytest                        # ~210 tests
+uv run pytest                        # ~220 tests
 uv run python -m quant.production.api  # browse http://localhost:8000/docs
 ```
 
@@ -162,10 +154,7 @@ Copy-Item .env.example .env
 
 ## Configuration reference
 
-The platform reads settings from dataclass defaults, YAML files under
-`configs/`, and environment variable overrides. All sensitive fields
-(`password`, `secret_key`, `api_key`, `sentry_dsn`) are masked with `***` in
-string representations, JSON exports, and logs.
+The platform reads settings from dataclass defaults, YAML files under `configs/`, and environment variable overrides. All sensitive fields (`password`, `secret_key`, `api_key`, `sentry_dsn`) are masked with `***` in string representations, JSON exports, and logs.
 
 | Environment variable      | Description                                                          | Default                                                  |
 | :------------------------ | :------------------------------------------------------------------- | :------------------------------------------------------- |
@@ -212,11 +201,17 @@ uv run python scripts/validate_data.py --symbols AAPL --start 2023-01-01 --end 2
 uv run python scripts/run_backtest.py --config configs/backtest.yaml --strategy buy_and_hold
 uv run python scripts/run_backtest.py --strategy momentum --lookback 63 --top-n 3 --symbols AAPL MSFT
 
-# 4) Run a walk-forward experiment (prints per-fold metrics + experiment id when tracking enabled)
+# 4) Run walk-forward validation (cost-realistic, parameter sweep, HTML report)
+uv run python scripts/run_backtest.py --strategy momentum --walk-forward --start 2020-01-01 --end 2023-12-31 --symbols AAPL MSFT GOOGL
+
+# 5) Run a walk-forward experiment (prints per-fold metrics + experiment id when tracking enabled)
 uv run python scripts/run_research.py --config configs/research.yaml --strategy dual_momentum
 
-# 5) Generate an HTML report from saved artifacts
+# 6) Generate an HTML report from saved artifacts
 uv run python scripts/generate_report.py --results reports/experiments/<exp_id> --format html
+
+# 7) Cross-strategy benchmark (all strategies, identical pipeline, HTML report)
+uv run python scripts/run_benchmark.py --start 2020-01-01 --end 2023-12-31 --symbols SPY QQQ IWM
 ```
 
 ---
@@ -269,10 +264,7 @@ uv run python -m quant.production.api    # serves on 0.0.0.0:8000
 
 ### Authentication
 
-When `QUANT_API_KEY` is set, protected endpoints require an `X-API-Key`
-header compared with `hmac.compare_digest` (constant-time). If `QUANT_API_KEY`
-is unset **and** `ENVIRONMENT=production`, the API server refuses to start
-(fail-closed). In development, auth is optional.
+When `QUANT_API_KEY` is set, protected endpoints require an `X-API-Key` header compared with `hmac.compare_digest` (constant-time). If `QUANT_API_KEY` is unset **and** `ENVIRONMENT=production`, the API server refuses to start (fail-closed). In development, auth is optional.
 
 ### Request guardrails
 
@@ -289,10 +281,7 @@ is unset **and** `ENVIRONMENT=production`, the API server refuses to start
 uv run streamlit run dashboard/app.py     # http://localhost:8501
 ```
 
-The sidebar lets you pick symbols, date range, data provider (`mock`,
-`parquet`, `yfinance`), and a strategy. Tabs render the equity curve,
-drawdown, daily-returns distribution, risk metrics (VaR / CVaR / annualized
-volatility), and a strategy-card preview.
+The sidebar lets you pick symbols, date range, data provider (`mock`, `parquet`, `yfinance`), and a strategy. Tabs render the equity curve, drawdown, daily-returns distribution, risk metrics (VaR / CVaR / annualized volatility), and a strategy-card preview.
 
 > Research-only — not a live trading UI.
 
@@ -307,15 +296,14 @@ uv run ruff check .
 # Type-check
 uv run mypy src/quant
 
-# Tests (~210 passing, including 18 new builtins/pair/risk-reduce/yfinance tests)
+# Tests (~220 passing, including integration tests)
 uv run pytest
 
 # Coverage
 uv run pytest --cov=quant --cov-report=term
 ```
 
-CI (`.github/workflows/ci.yml`) runs the same matrix on
-`ubuntu-latest` and `windows-latest` for every push and pull request.
+CI (`.github/workflows/ci.yml`) runs the same matrix on `ubuntu-latest` and `windows-latest` for every push and pull request.
 
 ---
 
@@ -328,6 +316,7 @@ CI (`.github/workflows/ci.yml`) runs the same matrix on
 - **Safe parsing**: `yaml.safe_load` used strictly for all configs.
 - **Secret redaction**: `password`, `secret_key`, `api_key`, `sentry_dsn` masked in `__repr__`/`__str__`, JSON exports, and structured logs.
 - **SQL injection**: `ExperimentTracker.update_experiment` uses a static whitelist of column combinations to build UPDATE statements (no dynamic identifier substitution).
+- **Look-ahead bias audit**: All features, signals, and engine components verified free of look-ahead bias. See `docs/LOOKAHEAD_AUDIT.md`.
 - **Ignore rules**: `.env`, `*.sqlite`, `*.duckdb`, `*.db`, `data/raw/**/*.parquet` all excluded via `.gitignore`.
 
 ---
@@ -401,8 +390,7 @@ Before opening a PR:
 1. `uv run ruff check .` (auto-fixes: `uv run ruff check . --fix`)
 2. `uv run mypy src/quant`
 3. `uv run pytest -q`
-4. Use conventional commit prefixes (`feat:`, `fix:`, `refactor:`, `docs:`,
-   `test:`, `chore:`, `security:`).
+4. Use conventional commit prefixes (`feat:`, `fix:`, `refactor:`, `docs:`, `test:`, `chore:`, `security:`).
 5. Branches: `feat/<topic>` or `fix/<topic>`.
 
 ---

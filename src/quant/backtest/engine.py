@@ -23,6 +23,8 @@ from quant.portfolio.construction import (
     PortfolioConstraints,
     equal_weight,
     inverse_volatility,
+    maximum_sharpe,
+    mean_variance,
     minimum_variance,
     risk_parity,
     volatility_targeting,
@@ -82,6 +84,8 @@ class BacktestEngine:
         self.current_prices: dict[str, float] = {}
         self.current_bid: dict[str, float] = {}
         self.current_ask: dict[str, float] = {}
+        # Price history for volatility/covariance calculations
+        self.price_history: dict[str, list[float]] = {}
 
         # History
         self.orders: list[Order] = []
@@ -189,6 +193,12 @@ class BacktestEngine:
             if symbol not in self.current_ask:
                 self.current_ask[symbol] = self.current_prices[symbol] * 1.0001
 
+        # Update price history for volatility/covariance calculations
+        for symbol, price in self.current_prices.items():
+            if symbol not in self.price_history:
+                self.price_history[symbol] = []
+            self.price_history[symbol].append(price)
+
     def _check_risk_limits(self) -> None:
         """Check and enforce risk limits."""
         current_equity = self.portfolio.total_value
@@ -226,6 +236,43 @@ class BacktestEngine:
                     self._submit_order(order)
             self.max_drawdown_hit = True
 
+    def _get_rolling_expected_returns(self, symbols: list[str], window: int = 60) -> pd.Series:
+        """Calculate rolling expected returns (mean returns) for each symbol from price history."""
+        expected_returns: dict[str, float] = {}
+        for _symbol in symbols:
+            if _symbol in self.price_history and len(self.price_history[_symbol]) > window:
+                prices = pd.Series(self.price_history[_symbol])
+                returns = prices.pct_change().dropna()
+                exp_ret = returns.rolling(window=window, min_periods=window).mean().iloc[-1]
+                expected_returns[_symbol] = exp_ret if not np.isnan(exp_ret) else 0.0
+            else:
+                expected_returns[_symbol] = 0.0
+        return pd.Series(expected_returns)
+
+    def _get_rolling_covariance(self, symbols: list[str], window: int = 60) -> pd.DataFrame:
+        """Calculate rolling covariance matrix for symbols from price history."""
+        # Build return matrix from price history
+        return_matrix = pd.DataFrame()
+        for symbol in symbols:
+            if symbol in self.price_history and len(self.price_history[symbol]) > window:
+                prices = pd.Series(self.price_history[symbol])
+                returns = prices.pct_change().dropna()
+                return_matrix[symbol] = returns
+
+        if len(return_matrix) < window:
+            # Fallback to diagonal matrix with estimated variances
+            n = len(symbols)
+            return pd.DataFrame(np.eye(n) * 0.0004, index=symbols, columns=symbols)
+
+        # Rolling covariance
+        cov_matrix = return_matrix.rolling(window=window, min_periods=window).cov()
+        # Get the last valid covariance matrix
+        last_cov = cov_matrix.iloc[-len(symbols):, :]
+        if isinstance(last_cov.index, pd.MultiIndex):
+            # Reshape to proper matrix
+            last_cov = last_cov.unstack(level=0)
+        return last_cov.loc[symbols, symbols]
+
     def _construct_portfolio(self, signals: pd.Series) -> pd.Series:
         """Construct target portfolio from signals."""
         # Filter active signals
@@ -233,6 +280,8 @@ class BacktestEngine:
 
         if len(active_signals) == 0:
             return pd.Series(dtype=float)
+
+        symbols = list(active_signals.index)
 
         # Map construction method
         method = self.config.construction_method
@@ -242,27 +291,55 @@ class BacktestEngine:
             return equal_weight(active_signals, constraints)
 
         elif method == ConstructionMethod.INVERSE_VOLATILITY:
-            # Need volatility estimates - use rolling 20-day for now
-            volatilities = pd.Series(0.02, index=active_signals.index)  # placeholder
-            return inverse_volatility(active_signals, volatilities, constraints)
+            # Calculate rolling volatility for each symbol
+            volatilities = {}
+            for symbol in symbols:
+                if symbol in self.price_history and len(self.price_history[symbol]) > 20:
+                    prices = pd.Series(self.price_history[symbol])
+                    returns = prices.pct_change().dropna()
+                    vol = returns.rolling(window=20, min_periods=20).std().iloc[-1]
+                    volatilities[symbol] = vol if not np.isnan(vol) and vol > 0 else 0.02
+                else:
+                    volatilities[symbol] = 0.02
+            vol_series = pd.Series(volatilities, index=symbols)
+            return inverse_volatility(active_signals, vol_series, constraints)
 
         elif method == ConstructionMethod.VOLATILITY_TARGETING:
-            volatilities = pd.Series(0.02, index=active_signals.index)
+            volatilities = {}
+            for symbol in symbols:
+                if symbol in self.price_history and len(self.price_history[symbol]) > 20:
+                    prices = pd.Series(self.price_history[symbol])
+                    returns = prices.pct_change().dropna()
+                    vol = returns.rolling(window=20, min_periods=20).std().iloc[-1]
+                    volatilities[symbol] = vol if not np.isnan(vol) and vol > 0 else 0.02
+                else:
+                    volatilities[symbol] = 0.02
+            vol_series = pd.Series(volatilities, index=symbols)
             target = constraints.target_volatility or 0.15
-            return volatility_targeting(active_signals, volatilities, target, constraints)
+            return volatility_targeting(active_signals, vol_series, target, constraints)
 
         elif method == ConstructionMethod.RISK_PARITY:
-            # Need covariance matrix
-            n = len(active_signals)
-            cov = np.eye(n) * 0.0004
-            cov_df = pd.DataFrame(cov, index=active_signals.index, columns=active_signals.index)
+            # Calculate rolling covariance matrix
+            cov_df = self._get_rolling_covariance(symbols, window=60)
             return risk_parity(cov_df, constraints)
 
         elif method == ConstructionMethod.MINIMUM_VARIANCE:
-            n = len(active_signals)
-            cov = np.eye(n) * 0.0004
-            cov_df = pd.DataFrame(cov, index=active_signals.index, columns=active_signals.index)
+            cov_df = self._get_rolling_covariance(symbols, window=60)
             return minimum_variance(cov_df, constraints)
+
+        elif method == ConstructionMethod.MEAN_VARIANCE:
+            # Calculate expected returns and covariance matrix
+            expected_returns = self._get_rolling_expected_returns(symbols, window=60)
+            cov_df = self._get_rolling_covariance(symbols, window=60)
+            risk_aversion = getattr(constraints, 'risk_aversion', 1.0)
+            return mean_variance(expected_returns, cov_df, risk_aversion, constraints)
+
+        elif method == ConstructionMethod.MAXIMUM_SHARPE:
+            # Calculate expected returns and covariance matrix
+            expected_returns = self._get_rolling_expected_returns(symbols, window=60)
+            cov_df = self._get_rolling_covariance(symbols, window=60)
+            risk_free_rate = getattr(constraints, 'risk_free_rate', 0.0)
+            return maximum_sharpe(expected_returns, cov_df, risk_free_rate, constraints)
 
         else:
             # Default to equal weight

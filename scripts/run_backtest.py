@@ -92,6 +92,8 @@ def main() -> None:
     parser.add_argument("--top-n", type=int, help="Strategy top_n override")
     parser.add_argument("--rebalance-freq", type=int, help="Strategy rebalance frequency override")
     parser.add_argument("--report", action="store_true", help="Generate an HTML research report")
+    parser.add_argument("--walk-forward", action="store_true", help="Run walk-forward validation instead of single backtest")
+    parser.add_argument("--alpha", type=float, default=0.05, help="Significance level for multiple testing correction (default: 0.05)")
     parser.add_argument(
         "--save-artifacts",
         default=None,
@@ -160,31 +162,136 @@ def main() -> None:
         max_drawdown_action=cfg.get("risk", {}).get("max_drawdown_action", "reduce_exposure"),
     )
 
-    engine = BacktestEngine(bt_config)
-    engine.set_strategy(strategy)
+    if args.walk_forward:
+        from quant.research import WalkForwardConfig, WalkForwardValidator
 
-    try:
-        results = engine.run(data)
-    except Exception as e:
-        print(f"Backtest failed: {e}", file=sys.stderr)
-        raise
+        research_cfg = cfg.get("research", {})
+        wf_cfg = research_cfg.get("walk_forward", {})
+        walk_forward_config = WalkForwardConfig(
+            train_window=int(wf_cfg.get("train_window", 252)),
+            validation_window=int(wf_cfg.get("validation_window", 63)),
+            test_window=int(wf_cfg.get("test_window", 63)),
+            step=int(wf_cfg.get("step", 63)),
+            expanding=bool(wf_cfg.get("expanding", False)),
+        )
 
-    final_equity = float(results.get("final_equity", capital))
-    total_return = float(results.get("total_return", 0.0))
-    n_orders = len(results.get("orders", []))
-    n_fills = len(results.get("fills", []))
+        param_grid: dict[str, list] = {
+            "lookback": [63, 126, 252],
+            "top_n": [3, 5, 10],
+            "rebalance_freq": [21, 63],
+        }
 
-    print()
-    print("=" * 60)
-    print("Backtest Summary")
-    print("=" * 60)
-    print(f"  Strategy          : {strategy_name}")
-    print(f"  Symbols           : {', '.join(symbols)}")
-    print(f"  Final equity      : {final_equity:,.2f}")
-    print(f"  Total return      : {total_return * 100:+.2f}%")
-    print(f"  Max drawdown hit  : {bool(results.get('max_drawdown_hit', False))}")
-    print(f"  Orders / fills    : {n_orders} / {n_fills}")
-    print("=" * 60)
+        print(f"Running walk-forward validation: strategy={strategy_name} provider={provider} symbols={symbols}")
+        print(f"  date range: {start} -> {end}  capital={capital:,.0f}")
+        print(f"  walk-forward: train={walk_forward_config.train_window} "
+              f"val={walk_forward_config.validation_window} test={walk_forward_config.test_window} "
+              f"step={walk_forward_config.step}")
+        print(f"  parameter grid: {param_grid}")
+
+        try:
+            data = download_data(symbols=symbols, start_date=start, end_date=end, provider=provider)
+        except Exception as e:
+            print(f"Error downloading data: {e}", file=sys.stderr)
+            sys.exit(1)
+
+        if not data:
+            print("Error: no data returned for the requested symbols", file=sys.stderr)
+            sys.exit(1)
+
+        backtest_config = BacktestConfig(
+            initial_capital=capital,
+            start_date=start,
+            end_date=end,
+            timeframe=bt_cfg.get("timeframe", "1d"),
+            execution=_build_execution_config(cfg),
+            portfolio_constraints=_build_constraints(cfg),
+            max_drawdown=float(cfg.get("risk", {}).get("max_drawdown", 0.20)),
+            max_drawdown_action=cfg.get("risk", {}).get("max_drawdown_action", "reduce_exposure"),
+        )
+
+        validator = WalkForwardValidator(
+            config=walk_forward_config,
+            backtest_config=backtest_config,
+            param_grid={
+                "lookback": [63, 126, 252],
+                "top_n": [3, 5, 10],
+                "rebalance_freq": [21, 63],
+            },
+        )
+
+        def _strategy_factory(name: str):
+            def factory(params: dict[str, Any]):
+                try:
+                    return create_strategy(name, **params)
+                except TypeError:
+                    return create_strategy(name)
+            return factory
+
+        factory = _strategy_factory(strategy_name)
+
+        try:
+            result = validator.validate(data, factory)
+        except Exception as e:
+            print(f"Walk-forward validation failed: {e}", file=sys.stderr)
+            raise
+
+        print()
+        print("=" * 70)
+        print(f"Walk-Forward Results: {strategy_name}")
+        print("=" * 70)
+        print(f"  Folds run: {len(result.folds)}")
+        for fold in result.folds:
+            test = fold.test_metrics or {}
+            sharpe = test.get("sharpe_ratio", float("nan"))
+            ret = test.get("total_return", float("nan"))
+            print(f"  fold {fold.fold_id}: test return={ret * 100:+.2f}%  sharpe={sharpe:.2f}  "
+                  f"params={fold.best_params}")
+
+        print()
+        print(f"  Aggregate metrics: {result.aggregate_metrics}")
+        print(f"  Parameter stability: {result.parameter_stability}")
+        print("=" * 70)
+
+        # Multiple testing correction (Bonferroni)
+        n_params = len(param_grid.get("lookback", [1])) * len(param_grid.get("top_n", [1])) * len(param_grid.get("rebalance_freq", [1]))
+        bonferroni_alpha = 0.05 / n_params
+        print("\nMultiple Testing Correction (Bonferroni):")
+        print(f"  Parameter combinations tested: {n_params}")
+        print("  Nominal alpha: 0.05")
+        print(f"  Bonferroni-corrected alpha: {bonferroni_alpha:.6f}")
+        print(f"  Interpretation: Results with p < {bonferroni_alpha:.6f} survive correction")
+
+        results = {
+            "folds": [f.__dict__ for f in result.folds],
+            "aggregate": result.aggregate_metrics,
+        }
+
+    else:
+        engine = BacktestEngine(bt_config)
+        engine.set_strategy(strategy)
+
+        try:
+            results = engine.run(data)
+        except Exception as e:
+            print(f"Backtest failed: {e}", file=sys.stderr)
+            raise
+
+        final_equity = float(results.get("final_equity", capital))
+        total_return = float(results.get("total_return", 0.0))
+        n_orders = len(results.get("orders", []))
+        n_fills = len(results.get("fills", []))
+
+        print()
+        print("=" * 60)
+        print("Backtest Summary")
+        print("=" * 60)
+        print(f"  Strategy          : {strategy_name}")
+        print(f"  Symbols           : {', '.join(symbols)}")
+        print(f"  Final equity      : {final_equity:,.2f}")
+        print(f"  Total return      : {total_return * 100:+.2f}%")
+        print(f"  Max drawdown hit  : {bool(results.get('max_drawdown_hit', False))}")
+        print(f"  Orders / fills    : {n_orders} / {n_fills}")
+        print("=" * 60)
 
     if args.report:
         try:
