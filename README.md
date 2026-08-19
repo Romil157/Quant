@@ -69,7 +69,7 @@ Quant/
 ├─ notebooks/                  # Exploratory research notebooks
 ├─ reports/                    # Generated performance & backtest reports
 ├─ scripts/                    # CLI scripts (download, validate, backtest, research, benchmark, report)
-├─ tests/                      # Unit + integration + security test suite (~220 tests)
+├─ tests/                      # Unit + integration + security test suite (~248 tests)
 │   ├─ unit/
 │   └─ integration/            # Cross-module flows
 ├─ src/quant/                  # Core platform package
@@ -78,6 +78,7 @@ Quant/
 │   ├─ cli.py                  # Typer CLI
 │   ├─ analytics/              # Performance & risk factor calcs (Sharpe, Sortino, VaR, beta)
 │   ├─ backtest/               # Event-driven engine, execution cost sim, types
+│   ├─ brokers/                # Execution adapters (Alpaca, base broker interface)
 │   ├─ config/                 # Pydantic + YAML configuration loader
 │   ├─ data/                   # Providers (mock, parquet, yfinance), validation, cleaning
 │   ├─ features/               # Microstructure, statistical, technical, volatility

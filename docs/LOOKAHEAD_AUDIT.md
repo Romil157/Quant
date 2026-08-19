@@ -106,14 +106,14 @@ All validators operate on **completed** historical data only. No forward-looking
 
 | Module | Look-Ahead Status |
 |--------|-------------------|
-| `features/technical` | ✅ CLEAN |
-| `features/statistical` | ✅ CLEAN |
-| `features/volatility` | ✅ CLEAN |
-| `features/microstructure` | ✅ CLEAN |
-| `strategies/signals` | ✅ CLEAN |
-| `backtest/engine` | ✅ CLEAN |
-| `data/providers` | ✅ CLEAN |
-| `data/validation` | ✅ CLEAN |
+| `features/technical` | CLEAN |
+| `features/statistical` | CLEAN |
+| `features/volatility` | CLEAN |
+| `features/microstructure` | CLEAN |
+| `strategies/signals` | CLEAN |
+| `backtest/engine` | CLEAN |
+| `data/providers` | CLEAN |
+| `data/validation` | CLEAN |
 
 ## Conclusion
 

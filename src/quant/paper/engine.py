@@ -5,6 +5,7 @@ import asyncio
 import sqlite3
 import time
 from collections.abc import Callable
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -15,7 +16,7 @@ import pandas as pd
 
 from quant.backtest.engine import BacktestConfig, BacktestEngine
 from quant.backtest.execution import ExecutionConfig
-from quant.backtest.types import Fill, Order, OrderSide, OrderType
+from quant.backtest.types import Fill, Order, OrderSide, OrderStatus, OrderType, Position
 from quant.portfolio.construction import PortfolioConstraints
 from quant.production.monitoring import get_logger, get_metrics_collector
 
@@ -58,9 +59,19 @@ class PaperState:
         self.initial_capital = initial_capital
         self._init_db()
 
+    @contextmanager
+    def _connect(self):
+        """Context manager for SQLite connections ensuring clean closure."""
+        conn = sqlite3.connect(self.db_path)
+        try:
+            yield conn
+            conn.commit()
+        finally:
+            conn.close()
+
     def _init_db(self) -> None:
         """Initialize SQLite database with WAL mode."""
-        with sqlite3.connect(self.db_path) as conn:
+        with self._connect() as conn:
             conn.execute("PRAGMA journal_mode=WAL")
             conn.execute("PRAGMA synchronous=NORMAL")
 
@@ -131,26 +142,23 @@ class PaperState:
                 )
             """)
 
-            conn.commit()
-
     def get_cash(self) -> float:
         """Get current cash balance."""
-        with sqlite3.connect(self.db_path) as conn:
+        with self._connect() as conn:
             row = conn.execute("SELECT amount FROM cash WHERE id = 1").fetchone()
             return row[0] if row else 0.0
 
     def set_cash(self, amount: float) -> None:
         """Set cash balance."""
-        with sqlite3.connect(self.db_path) as conn:
+        with self._connect() as conn:
             conn.execute(
                 "UPDATE cash SET amount = ?, updated_at = CURRENT_TIMESTAMP WHERE id = 1",
                 (amount,)
             )
-            conn.commit()
 
     def get_position(self, symbol: str) -> dict | None:
         """Get position for a symbol."""
-        with sqlite3.connect(self.db_path) as conn:
+        with self._connect() as conn:
             row = conn.execute(
                 "SELECT symbol, quantity, avg_price, market_value, unrealized_pnl, realized_pnl FROM positions WHERE symbol = ?",
                 (symbol,)
@@ -165,28 +173,25 @@ class PaperState:
                     "realized_pnl": row[5],
                 }
             return None
-        return None
 
     def set_position(self, symbol: str, quantity: float, avg_price: float,
                      market_value: float, unrealized_pnl: float, realized_pnl: float) -> None:
         """Set or update position."""
-        with sqlite3.connect(self.db_path) as conn:
+        with self._connect() as conn:
             conn.execute("""
                 INSERT OR REPLACE INTO positions
                 (symbol, quantity, avg_price, market_value, unrealized_pnl, realized_pnl, updated_at)
                 VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
             """, (symbol, quantity, avg_price, market_value, unrealized_pnl, realized_pnl))
-            conn.commit()
 
     def delete_position(self, symbol: str) -> None:
         """Delete position (when flat)."""
-        with sqlite3.connect(self.db_path) as conn:
+        with self._connect() as conn:
             conn.execute("DELETE FROM positions WHERE symbol = ?", (symbol,))
-            conn.commit()
 
     def get_all_positions(self) -> dict[str, dict]:
         """Get all positions."""
-        with sqlite3.connect(self.db_path) as conn:
+        with self._connect() as conn:
             rows = conn.execute(
                 "SELECT symbol, quantity, avg_price, market_value, unrealized_pnl, realized_pnl FROM positions"
             ).fetchall()
@@ -204,7 +209,7 @@ class PaperState:
 
     def save_order(self, order: Order) -> None:
         """Save order to database."""
-        with sqlite3.connect(self.db_path) as conn:
+        with self._connect() as conn:
             conn.execute("""
                 INSERT OR REPLACE INTO orders
                 (order_id, symbol, side, quantity, order_type, limit_price, status,
@@ -216,11 +221,10 @@ class PaperState:
                 order.filled_quantity, order.avg_fill_price, order.commission,
                 order.timestamp.isoformat() if order.timestamp else None
             ))
-            conn.commit()
 
     def save_fill(self, fill: Fill) -> None:
         """Save fill to database."""
-        with sqlite3.connect(self.db_path) as conn:
+        with self._connect() as conn:
             conn.execute("""
                 INSERT OR REPLACE INTO fills
                 (fill_id, order_id, symbol, side, quantity, price, commission, timestamp)
@@ -230,18 +234,16 @@ class PaperState:
                 fill.quantity, fill.price, fill.commission,
                 fill.timestamp.isoformat() if fill.timestamp else None
             ))
-            conn.commit()
 
     def save_snapshot(self, timestamp: datetime, cash: float, total_value: float,
                       gross_exposure: float, net_exposure: float) -> None:
         """Save account snapshot."""
-        with sqlite3.connect(self.db_path) as conn:
+        with self._connect() as conn:
             conn.execute("""
                 INSERT OR REPLACE INTO account_snapshots
                 (timestamp, cash, total_value, gross_exposure, net_exposure)
                 VALUES (?, ?, ?, ?, ?)
             """, (timestamp.isoformat(), cash, total_value, gross_exposure, net_exposure))
-            conn.commit()
 
     def load_portfolio_state(self, portfolio) -> None:
         """Load portfolio state from database."""
@@ -252,18 +254,18 @@ class PaperState:
         positions = self.get_all_positions()
         for symbol, pos in positions.items():
             if pos["quantity"] != 0:
-                portfolio.positions[symbol] = type('obj', (object,), {
-                    'symbol': pos["symbol"],
-                    'quantity': pos["quantity"],
-                    'avg_price': pos["avg_price"],
-                    'market_value': pos["market_value"],
-                    'unrealized_pnl': pos["unrealized_pnl"],
-                    'realized_pnl': pos["realized_pnl"],
-                })()
+                portfolio.positions[symbol] = Position(
+                    symbol=pos["symbol"],
+                    quantity=pos["quantity"],
+                    avg_price=pos["avg_price"],
+                    market_value=pos["market_value"],
+                    unrealized_pnl=pos["unrealized_pnl"],
+                    realized_pnl=pos["realized_pnl"],
+                )
 
     def get_account_history(self, limit: int = 100) -> list[dict]:
         """Get recent account snapshots."""
-        with sqlite3.connect(self.db_path) as conn:
+        with self._connect() as conn:
             rows = conn.execute(
                 "SELECT timestamp, cash, total_value, gross_exposure, net_exposure "
                 "FROM account_snapshots ORDER BY timestamp DESC LIMIT ?",
@@ -279,6 +281,10 @@ class PaperState:
                 }
                 for row in rows
             ]
+
+    def get_snapshots(self, limit: int = 100) -> list[dict]:
+        """Get recent account snapshots (alias for get_account_history)."""
+        return self.get_account_history(limit)
 
 
 class PaperDataFeed:
@@ -318,7 +324,6 @@ class MockDataFeed(PaperDataFeed):
         """Generate mock bar."""
         if symbol not in self._current_prices:
             return None
-        return None
 
         price = self._current_prices[symbol]
         # Simple random walk
@@ -333,7 +338,7 @@ class MockDataFeed(PaperDataFeed):
             "low": price * (1 - abs(self._rng.normal(0, 0.002))),
             "close": price,
             "volume": int(self._rng.lognormal(13, 0.5)),
-            "timestamp": datetime.utcnow(),
+            "timestamp": datetime.now(),
         }
 
     async def get_historical_data(self, symbol: str, start: datetime, end: datetime) -> pd.DataFrame:
@@ -439,7 +444,7 @@ class PaperEngine(BacktestEngine):
 
             # Save snapshot
             self.state.save_snapshot(
-                datetime.utcnow(), self.portfolio.cash, self.portfolio.total_value,
+                datetime.now(), self.portfolio.cash, self.portfolio.total_value,
                 self.portfolio.gross_exposure, self.portfolio.net_exposure
             )
 
