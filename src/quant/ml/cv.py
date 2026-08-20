@@ -211,12 +211,12 @@ def cross_validate(
 
     return CVSummary(
         fold_results=results,
-        mean_train_score=np.mean(train_scores),
-        std_train_score=np.std(train_scores),
-        mean_test_score=np.mean(test_scores),
-        std_test_score=np.std(test_scores),
-        mean_fit_time=np.mean(fit_times),
-        score_stability=score_stability,
+        mean_train_score=float(np.mean(train_scores)),
+        std_train_score=float(np.std(train_scores)),
+        mean_test_score=float(np.mean(test_scores)),
+        std_test_score=float(np.std(test_scores)),
+        mean_fit_time=float(np.mean(fit_times)),
+        score_stability=float(score_stability),
     )
 
 

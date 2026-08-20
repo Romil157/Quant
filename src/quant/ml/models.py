@@ -1,7 +1,6 @@
 """ML model wrappers and utilities."""
 from __future__ import annotations
 
-from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -26,7 +25,7 @@ from sklearn.linear_model import (
     Ridge,
     RidgeClassifier,
 )
-from sklearn.model_selection import GridSearchCV, RandomizedSearchCV
+from sklearn.model_selection import GridSearchCV, KFold, RandomizedSearchCV
 from sklearn.neighbors import KNeighborsClassifier, KNeighborsRegressor
 from sklearn.neural_network import MLPClassifier, MLPRegressor
 from sklearn.pipeline import Pipeline
@@ -35,18 +34,21 @@ from sklearn.svm import SVC, SVR
 
 try:
     import xgboost as xgb
+
     HAS_XGBOOST = True
 except ImportError:
     HAS_XGBOOST = False
 
 try:
     import lightgbm as lgb
+
     HAS_LIGHTGBM = True
 except ImportError:
     HAS_LIGHTGBM = False
 
 try:
     import catboost as cb
+
     HAS_CATBOOST = True
 except ImportError:
     HAS_CATBOOST = False
@@ -55,8 +57,9 @@ except ImportError:
 @dataclass
 class ModelConfig:
     """Configuration for ML model."""
+
     name: str
-    model_type: str  # "regression" or "classification"
+    model_type: str = "regression"  # "regression" or "classification"
     params: dict[str, Any] = field(default_factory=dict)
     param_grid: dict[str, list[Any]] = field(default_factory=dict)
     use_scaling: bool = True
@@ -64,32 +67,35 @@ class ModelConfig:
     n_features: int = 50
 
 
-class BaseMLModel(ABC):
-    """Base class for ML models."""
+class BaseMLModel:
+    """Base class for ML model wrappers."""
+
+    estimator_cls: type[BaseEstimator] | None = None
 
     def __init__(self, config: ModelConfig):
         self.config = config
-        self.model: BaseEstimator | None = None
+        self.model: Pipeline | BaseEstimator | None = None
         self.scaler: StandardScaler | None = None
         self.feature_names: list[str] = []
         self.is_fitted = False
 
-    @abstractmethod
     def _create_model(self) -> BaseEstimator:
-        """Create the underlying sklearn model."""
-        pass
+        """Create the underlying sklearn estimator."""
+        if self.estimator_cls is None:
+            raise NotImplementedError("Model class must define estimator_cls or _create_model()")
+        return self.estimator_cls(**self.config.params)
 
     def _get_pipeline(self) -> Pipeline:
-        """Get preprocessing + model pipeline."""
-        steps = []
+        """Get preprocessing + estimator pipeline."""
+        steps: list[tuple[str, Any]] = []
         if self.config.use_scaling:
             self.scaler = StandardScaler()
-            steps.append(('scaler', self.scaler))
-        steps.append(('model', self._create_model()))
+            steps.append(("scaler", self.scaler))
+        steps.append(("model", self._create_model()))
         return Pipeline(steps)
 
     def fit(self, X: pd.DataFrame, y: pd.Series, **fit_params) -> BaseMLModel:
-        """Fit the model."""
+        """Fit preprocessing pipeline and model on feature matrix and target."""
         self.feature_names = list(X.columns)
         self.model = self._get_pipeline()
         self.model.fit(X, y, **fit_params)
@@ -97,40 +103,36 @@ class BaseMLModel(ABC):
         return self
 
     def predict(self, X: pd.DataFrame) -> np.ndarray:
-        """Make predictions."""
+        """Make predictions from feature matrix."""
         if not self.is_fitted or self.model is None:
             raise ValueError("Model not fitted")
-        # Ensure same columns
-        X = X[self.feature_names]
-        return self.model.predict(X)  # type: ignore
+        return self.model.predict(X[self.feature_names])  # type: ignore
 
     def predict_proba(self, X: pd.DataFrame) -> np.ndarray:
-        """Predict probabilities (classification only)."""
+        """Predict class probabilities."""
         if not self.is_fitted or self.model is None:
             raise ValueError("Model not fitted")
-        if not hasattr(self.model, 'predict_proba'):
+        if not hasattr(self.model, "predict_proba"):
             raise ValueError("Model does not support predict_proba")
-        X = X[self.feature_names]
-        return self.model.predict_proba(X)  # type: ignore
+        return self.model.predict_proba(X[self.feature_names])  # type: ignore
 
     def get_feature_importance(self) -> pd.DataFrame:
-        """Get feature importance if available."""
+        """Extract feature importances or linear coefficients."""
         if not self.is_fitted or self.model is None:
             raise ValueError("Model not fitted")
-        model_step = self.model.named_steps['model']
 
-
-        if hasattr(model_step, 'feature_importances_'):
-            importances = model_step.feature_importances_
-        elif hasattr(model_step, 'coef_'):
-            importances = np.abs(model_step.coef_).flatten()
+        estimator = self.model.named_steps["model"] if isinstance(self.model, Pipeline) else self.model
+        if hasattr(estimator, "feature_importances_"):
+            importances = estimator.feature_importances_
+        elif hasattr(estimator, "coef_"):
+            importances = np.abs(estimator.coef_).flatten()
         else:
-            return pd.DataFrame({'feature': self.feature_names, 'importance': 0})
+            return pd.DataFrame({"feature": self.feature_names, "importance": 0.0})
 
         return pd.DataFrame({
-            'feature': self.feature_names,
-            'importance': importances
-        }).sort_values('importance', ascending=False)
+            "feature": self.feature_names,
+            "importance": importances,
+        }).sort_values("importance", ascending=False)
 
     def get_params(self) -> dict:
         return self.config.params
@@ -141,111 +143,91 @@ class BaseMLModel(ABC):
 
 
 # Regression Models
-
 class LinearRegressionModel(BaseMLModel):
-    def _create_model(self) -> BaseEstimator:
-        return LinearRegression(**self.config.params)
+    estimator_cls = LinearRegression
 
 
 class RidgeModel(BaseMLModel):
-    def _create_model(self) -> BaseEstimator:
-        return Ridge(**self.config.params)
+    estimator_cls = Ridge
 
 
 class LassoModel(BaseMLModel):
-    def _create_model(self) -> BaseEstimator:
-        return Lasso(**self.config.params)
+    estimator_cls = Lasso
 
 
 class ElasticNetModel(BaseMLModel):
-    def _create_model(self) -> BaseEstimator:
-        return ElasticNet(**self.config.params)
+    estimator_cls = ElasticNet
 
 
 class RandomForestRegModel(BaseMLModel):
-    def _create_model(self) -> BaseEstimator:
-        return RandomForestRegressor(**self.config.params)
+    estimator_cls = RandomForestRegressor
 
 
 class GradientBoostingRegModel(BaseMLModel):
-    def _create_model(self) -> BaseEstimator:
-        return GradientBoostingRegressor(**self.config.params)
+    estimator_cls = GradientBoostingRegressor
 
 
 class ExtraTreesRegModel(BaseMLModel):
-    def _create_model(self) -> BaseEstimator:
-        return ExtraTreesRegressor(**self.config.params)
+    estimator_cls = ExtraTreesRegressor
 
 
 class HistGradientBoostingRegModel(BaseMLModel):
-    def _create_model(self) -> BaseEstimator:
-        return HistGradientBoostingRegressor(**self.config.params)
+    estimator_cls = HistGradientBoostingRegressor
 
 
 class SVRModel(BaseMLModel):
-    def _create_model(self) -> BaseEstimator:
-        return SVR(**self.config.params)
+    estimator_cls = SVR
 
 
 class KNNRegModel(BaseMLModel):
-    def _create_model(self) -> BaseEstimator:
-        return KNeighborsRegressor(**self.config.params)
+    estimator_cls = KNeighborsRegressor
 
 
 class MLPRegModel(BaseMLModel):
-    def _create_model(self) -> BaseEstimator:
-        return MLPRegressor(**self.config.params)
+    estimator_cls = MLPRegressor
 
 
 # Classification Models
-
 class LogisticRegressionModel(BaseMLModel):
-    def _create_model(self) -> BaseEstimator:
-        return LogisticRegression(**self.config.params)
+    estimator_cls = LogisticRegression
 
 
 class RidgeClassifierModel(BaseMLModel):
-    def _create_model(self) -> BaseEstimator:
-        return RidgeClassifier(**self.config.params)
+    estimator_cls = RidgeClassifier
 
 
 class RandomForestClsModel(BaseMLModel):
-    def _create_model(self) -> BaseEstimator:
-        return RandomForestClassifier(**self.config.params)
+    estimator_cls = RandomForestClassifier
 
 
 class GradientBoostingClsModel(BaseMLModel):
-    def _create_model(self) -> BaseEstimator:
-        return GradientBoostingClassifier(**self.config.params)
+    estimator_cls = GradientBoostingClassifier
 
 
 class ExtraTreesClsModel(BaseMLModel):
-    def _create_model(self) -> BaseEstimator:
-        return ExtraTreesClassifier(**self.config.params)
+    estimator_cls = ExtraTreesClassifier
 
 
 class HistGradientBoostingClsModel(BaseMLModel):
-    def _create_model(self) -> BaseEstimator:
-        return HistGradientBoostingClassifier(**self.config.params)
+    estimator_cls = HistGradientBoostingClassifier
 
 
 class SVCModel(BaseMLModel):
     def _create_model(self) -> BaseEstimator:
-        return SVC(probability=True, **self.config.params)
+        params = dict(self.config.params)
+        params.setdefault("probability", True)
+        return SVC(**params)
 
 
 class KNNClsModel(BaseMLModel):
-    def _create_model(self) -> BaseEstimator:
-        return KNeighborsClassifier(**self.config.params)
+    estimator_cls = KNeighborsClassifier
 
 
 class MLPClsModel(BaseMLModel):
-    def _create_model(self) -> BaseEstimator:
-        return MLPClassifier(**self.config.params)
+    estimator_cls = MLPClassifier
 
 
 # Gradient Boosting Libraries
-
 if HAS_XGBOOST:
     class XGBoostRegModel(BaseMLModel):
         def _create_model(self) -> BaseEstimator:
@@ -274,64 +256,58 @@ if HAS_CATBOOST:
             return cb.CatBoostClassifier(verbose=False, **self.config.params)
 
 
-# Model Registry
-
-REGRESSION_MODELS = {
-    'linear': LinearRegressionModel,
-    'ridge': RidgeModel,
-    'lasso': LassoModel,
-    'elasticnet': ElasticNetModel,
-    'rf': RandomForestRegModel,
-    'gbr': GradientBoostingRegModel,
-    'et': ExtraTreesRegModel,
-    'hgbr': HistGradientBoostingRegModel,
-    'svr': SVRModel,
-    'knn': KNNRegModel,
-    'mlp': MLPRegModel,
+REGRESSION_MODELS: dict[str, type[BaseMLModel]] = {
+    "linear": LinearRegressionModel,
+    "ridge": RidgeModel,
+    "lasso": LassoModel,
+    "elasticnet": ElasticNetModel,
+    "rf": RandomForestRegModel,
+    "gbr": GradientBoostingRegModel,
+    "et": ExtraTreesRegModel,
+    "hgbr": HistGradientBoostingRegModel,
+    "svr": SVRModel,
+    "knn": KNNRegModel,
+    "mlp": MLPRegModel,
 }
 
-CLASSIFICATION_MODELS = {
-    'logistic': LogisticRegressionModel,
-    'ridge_cls': RidgeClassifierModel,
-    'rf': RandomForestClsModel,
-    'gbc': GradientBoostingClsModel,
-    'et': ExtraTreesClsModel,
-    'hgbc': HistGradientBoostingClsModel,
-    'svc': SVCModel,
-    'knn': KNNClsModel,
-    'mlp': MLPClsModel,
+CLASSIFICATION_MODELS: dict[str, type[BaseMLModel]] = {
+    "logistic": LogisticRegressionModel,
+    "ridge_cls": RidgeClassifierModel,
+    "rf": RandomForestClsModel,
+    "gbc": GradientBoostingClsModel,
+    "et": ExtraTreesClsModel,
+    "hgbc": HistGradientBoostingClsModel,
+    "svc": SVCModel,
+    "knn": KNNClsModel,
+    "mlp": MLPClsModel,
 }
 
 if HAS_XGBOOST:
-    REGRESSION_MODELS['xgb'] = XGBoostRegModel
-    CLASSIFICATION_MODELS['xgb'] = XGBoostClsModel
+    REGRESSION_MODELS["xgb"] = XGBoostRegModel
+    CLASSIFICATION_MODELS["xgb"] = XGBoostClsModel
 
 if HAS_LIGHTGBM:
-    REGRESSION_MODELS['lgb'] = LightGBMRegModel
-    CLASSIFICATION_MODELS['lgb'] = LightGBMClsModel
+    REGRESSION_MODELS["lgb"] = LightGBMRegModel
+    CLASSIFICATION_MODELS["lgb"] = LightGBMClsModel
 
 if HAS_CATBOOST:
-    REGRESSION_MODELS['cat'] = CatBoostRegModel
-    CLASSIFICATION_MODELS['cat'] = CatBoostClsModel
+    REGRESSION_MODELS["cat"] = CatBoostRegModel
+    CLASSIFICATION_MODELS["cat"] = CatBoostClsModel
 
 
-def get_model_class(name: str, task: str) -> type:
+def get_model_class(name: str, task: str) -> type[BaseMLModel]:
     """Get model class by name and task."""
-    if task == "regression":
-        if name not in REGRESSION_MODELS:
-            raise ValueError(f"Unknown regression model: {name}. Available: {list(REGRESSION_MODELS.keys())}")
-        return REGRESSION_MODELS[name]
-    else:
-        if name not in CLASSIFICATION_MODELS:
-            raise ValueError(f"Unknown classification model: {name}. Available: {list(CLASSIFICATION_MODELS.keys())}")
-        return CLASSIFICATION_MODELS[name]
+    registry = REGRESSION_MODELS if task == "regression" else CLASSIFICATION_MODELS
+    if name not in registry:
+        raise ValueError(f"Unknown {task} model: {name}. Available: {sorted(registry.keys())}")
+    return registry[name]
 
 
 def create_model(name: str, task: str, params: dict | None = None) -> BaseMLModel:
-    """Create model instance."""
+    """Create model instance with configuration."""
     model_class = get_model_class(name, task)
     config = ModelConfig(name=name, model_type=task, params=params or {})
-    return model_class(config)  # type: ignore
+    return model_class(config)
 
 
 def tune_hyperparameters(
@@ -340,18 +316,16 @@ def tune_hyperparameters(
     y: pd.Series,
     param_grid: dict[str, Any],
     cv: int = 3,
-    scoring: str = 'neg_mean_squared_error',
+    scoring: str = "neg_mean_squared_error",
     n_iter: int = 20,
     random_state: int = 42,
-    method: str = 'random',  # 'grid' or 'random'
+    method: str = "random",
 ) -> BaseMLModel:
     """Tune hyperparameters using cross-validation."""
     pipeline = model._get_pipeline()
+    prefixed_grid = {f"model__{k}": v for k, v in param_grid.items()}
 
-    # Prefix params for pipeline
-    prefixed_grid = {f'model__{k}': v for k, v in param_grid.items()}
-
-    if method == 'grid':
+    if method == "grid":
         search = GridSearchCV(
             pipeline, prefixed_grid, cv=cv, scoring=scoring,
             n_jobs=-1, verbose=0
@@ -363,13 +337,10 @@ def tune_hyperparameters(
         )
 
     search.fit(X, y)
-
-    # Update model with best params
-    best_params = {k.replace('model__', ''): v for k, v in search.best_params_.items()}
+    best_params = {k.replace("model__", ""): v for k, v in search.best_params_.items()}
     model.config.params.update(best_params)
     model.model = search.best_estimator_
     model.is_fitted = True
-
     return model
 
 
@@ -377,27 +348,21 @@ def ensemble_predict(
     models: list[BaseMLModel],
     X: pd.DataFrame,
     weights: list[float] | None = None,
-    method: str = 'mean',
+    method: str = "mean",
 ) -> np.ndarray:
     """Ensemble predictions from multiple models."""
-    preds_list: list[np.ndarray] = []
-    for model in models:
-        preds_list.append(model.predict(X))
-
-    preds = np.column_stack(preds_list)
-
+    preds = np.column_stack([model.predict(X) for model in models])
     weights_arr = np.ones(len(models)) / len(models) if weights is None else np.array(weights)
 
-    if method == 'mean':
-        return np.average(preds, axis=1, weights=weights_arr)  # type: ignore
-    elif method == 'median':
-        return np.median(preds, axis=1)  # type: ignore
-    elif method == 'weighted_median':
-        # Approximate weighted median
+    if method == "mean":
+        return np.asarray(np.average(preds, axis=1, weights=weights_arr))
+    elif method == "median":
+        return np.asarray(np.median(preds, axis=1))
+    elif method == "weighted_median":
         sorted_idx = np.argsort(preds, axis=1)
         cumsum = np.cumsum(weights_arr[sorted_idx], axis=1)
         median_idx = np.argmax(cumsum >= 0.5, axis=1)
-        return preds[np.arange(len(preds)), sorted_idx[np.arange(len(preds)), median_idx]]  # type: ignore
+        return np.asarray(preds[np.arange(len(preds)), sorted_idx[np.arange(len(preds)), median_idx]])
     else:
         raise ValueError(f"Unknown ensemble method: {method}")
 
@@ -410,11 +375,8 @@ def stack_models(
     cv: int = 5,
 ) -> BaseMLModel:
     """Stack models using cross-validated predictions as meta-features."""
-    from sklearn.model_selection import KFold
-
     n_samples = len(X)
     meta_features = np.zeros((n_samples, len(base_models)))
-
     kf = KFold(n_splits=cv, shuffle=True, random_state=42)
 
     for i, model in enumerate(base_models):
@@ -425,14 +387,11 @@ def stack_models(
             fold_preds[val_idx] = fold_model.predict(X.iloc[val_idx])
         meta_features[:, i] = fold_preds
 
-    # Train meta-model on meta-features
     meta_model.fit(pd.DataFrame(meta_features, index=X.index), y)
 
-    # Refit base models on full data
     for model in base_models:
         model.fit(X, y)
 
-    # Create stacked predictor
     class StackedModel(BaseMLModel):
         def __init__(self, base_models: list[BaseMLModel], meta_model: BaseMLModel):
             super().__init__(ModelConfig(name="stacked", model_type=meta_model.config.model_type))

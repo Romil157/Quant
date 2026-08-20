@@ -86,6 +86,7 @@ class BacktestResponse(BaseModel):
 
 
 class MLExperimentRequest(BaseModel):
+    model_config = {"protected_namespaces": ()}
     model_name: str = "rf"
     task: str = "regression"
     symbols: list[str]

@@ -554,7 +554,7 @@ class PaperEngine(BacktestEngine):
 
         try:
             # Update daily start equity at midnight
-            now = datetime.utcnow()
+            now = datetime.now()
             if now.hour == 0 and now.minute < 5:
                 self.daily_start_equity = self.portfolio.total_value
                 self.daily_pnl = 0.0
@@ -584,7 +584,7 @@ class PaperEngine(BacktestEngine):
             # Generate signals
             bar_df = self._build_bar_dataframe(bar_data)
             if self.strategy:
-                signals = self.strategy.generate_signals(bar_df, datetime.utcnow())
+                signals = self.strategy.generate_signals(bar_df, datetime.now())
 
                 # Construct portfolio
                 target_weights = self._construct_portfolio(signals)
@@ -612,7 +612,7 @@ class PaperEngine(BacktestEngine):
                                         side=order_side,
                                         quantity=abs(qty),
                                         order_type=OrderType.MARKET,
-                                        timestamp=datetime.utcnow(),
+                                        timestamp=datetime.now(),
                                     )
                                     self._submit_order(order)
 
@@ -657,7 +657,7 @@ class PaperEngine(BacktestEngine):
                 (symbol, "low"): [bar.get("low", bar.get("close", 0))],
                 (symbol, "close"): [bar.get("close", 0)],
                 (symbol, "volume"): [bar.get("volume", 0)],
-            }, index=[datetime.utcnow()])
+            }, index=[datetime.now()])
             dfs.append(df)
         return pd.concat(dfs, axis=1) if dfs else pd.DataFrame()
 

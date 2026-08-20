@@ -428,7 +428,7 @@ class OnlineEnsemble:
             pred = model.predict(X)
             preds.append(pred * self.weights[i])
 
-        return np.sum(preds, axis=0)
+        return np.asarray(np.sum(preds, axis=0))
 
     def update_performance(self, y_true: np.ndarray, y_pred: np.ndarray) -> None:
         """Update drift detector and potentially retrain."""

@@ -38,7 +38,7 @@ def ewma_volatility(
 ) -> pd.Series:
     """EWMA volatility."""
     ewm_var = returns.ewm(span=span, adjust=False, min_periods=span).var()
-    vol = np.sqrt(ewm_var)
+    vol = np.sqrt(ewm_var.where(ewm_var > 0))
     if annualize:
         vol = vol * np.sqrt(periods_per_year)
     return vol
@@ -54,11 +54,11 @@ def garman_klass_volatility(
     periods_per_year: int = 252,
 ) -> pd.Series:
     """Garman-Klass volatility estimator using OHLC data."""
-    # GK estimator: 0.5 * (ln(H/L))^2 - (2*ln(2)-1) * (ln(C/O))^2
     hl = np.log(high / low)
     co = np.log(close / open_)
     gk = 0.5 * hl**2 - (2 * np.log(2) - 1) * co**2
-    gk_vol = np.sqrt(gk.rolling(window=window, min_periods=window).mean())
+    gk_mean = gk.rolling(window=window, min_periods=window).mean()
+    gk_vol = np.sqrt(gk_mean.where(gk_mean > 0))
     if annualize:
         gk_vol = gk_vol * np.sqrt(periods_per_year)
     return gk_vol
@@ -73,11 +73,11 @@ def parkinson_volatility(
 ) -> pd.Series:
     """Parkinson volatility estimator using high-low range."""
     hl = np.log(high / low)
-    park = np.sqrt((1 / (4 * np.log(2))) * hl**2)
-    park_vol = park.rolling(window=window, min_periods=window).mean()
+    park = (1 / (4 * np.log(2))) * hl**2
+    park_mean = np.sqrt(park.where(park > 0)).rolling(window=window, min_periods=window).mean()
     if annualize:
-        park_vol = park_vol * np.sqrt(periods_per_year)
-    return park_vol
+        park_mean = park_mean * np.sqrt(periods_per_year)
+    return park_mean
 
 
 def rogers_satchell_volatility(
@@ -94,7 +94,8 @@ def rogers_satchell_volatility(
     lo = np.log(low / open_)
     co = np.log(close / open_)
     rs = ho * (ho - co) + lo * (lo - co)
-    rs_vol = np.sqrt(rs.rolling(window=window, min_periods=window).mean())
+    rs_mean = rs.rolling(window=window, min_periods=window).mean()
+    rs_vol = np.sqrt(rs_mean.where(rs_mean > 0))
     if annualize:
         rs_vol = rs_vol * np.sqrt(periods_per_year)
     return rs_vol
@@ -122,9 +123,8 @@ def volatility_cone(
     periods_per_year: int = 252,
 ) -> pd.DataFrame:
     """Volatility cone: rolling volatility at multiple windows."""
-    result = {}
-    for w in windows:
-        result[f"vol_{w}"] = realized_volatility(
-            returns, w, annualize, periods_per_year
-        )
+    result = {
+        f"vol_{w}": realized_volatility(returns, w, annualize, periods_per_year)
+        for w in windows
+    }
     return pd.DataFrame(result)

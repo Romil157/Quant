@@ -105,16 +105,16 @@ class JobScheduler:
 
         # Wrap function for monitoring
         async def monitored_func():
-            start = datetime.utcnow()
+            start = datetime.now()
             try:
                 if asyncio.iscoroutinefunction(func):
                     await func()
                 else:
                     func()
-                self.metrics.record_job(job_id, "success", (datetime.utcnow() - start).total_seconds())
+                self.metrics.record_job(job_id, "success", (datetime.now() - start).total_seconds())
                 self.logger.info("job_completed", job_id=job_id)
             except Exception as e:
-                self.metrics.record_job(job_id, "error", (datetime.utcnow() - start).total_seconds())
+                self.metrics.record_job(job_id, "error", (datetime.now() - start).total_seconds())
                 self.logger.error("job_failed", job_id=job_id, error=str(e))
                 raise
 
@@ -210,7 +210,7 @@ async def daily_data_update():
     symbols = getattr(config, "daily_update_symbols", ["SPY", "QQQ", "IWM"])
 
     # Download yesterday's data
-    end_date = datetime.utcnow().date()
+    end_date = datetime.now().date()
     start_date = end_date - timedelta(days=1)
 
     for symbol in symbols:
@@ -235,7 +235,7 @@ async def weekly_model_retrain():
     logger = get_logger("jobs.model_retrain")
 
     symbols = getattr(config, "ml_symbols", ["SPY", "QQQ", "IWM"])
-    end_date = datetime.utcnow().date()
+    end_date = datetime.now().date()
     start_date = end_date - timedelta(days=365)
 
     data = download_data(
@@ -269,7 +269,7 @@ async def daily_backtest():
     symbols = getattr(config, "backtest_symbols", ["SPY", "QQQ"])
     strategies = getattr(config, "backtest_strategies", ["momentum", "mean_reversion"])
 
-    end_date = datetime.utcnow().date()
+    end_date = datetime.now().date()
     start_date = end_date - timedelta(days=365)
 
     for strategy in strategies:
@@ -298,7 +298,7 @@ async def cleanup_old_data():
 
     # Clean cache older than 30 days
     cache_root = config.storage.cache_root
-    cutoff = datetime.utcnow() - timedelta(days=30)
+    cutoff = datetime.now() - timedelta(days=30)
 
     for cache_dir in cache_root.iterdir():
         if cache_dir.is_dir():

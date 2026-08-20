@@ -34,8 +34,8 @@ class Alert:
     component: str
     message: str
     status: AlertStatus = AlertStatus.FIRING
-    created_at: datetime = field(default_factory=datetime.utcnow)
-    updated_at: datetime = field(default_factory=datetime.utcnow)
+    created_at: datetime = field(default_factory=datetime.now)
+    updated_at: datetime = field(default_factory=datetime.now)
     resolved_at: datetime | None = None
     acknowledged_by: str | None = None
     acknowledged_at: datetime | None = None
@@ -149,7 +149,7 @@ class AlertManager:
         if not rule:
             raise ValueError(f"Rule not found: {rule_name}")
 
-        alert_id = f"{rule_name}_{int(datetime.utcnow().timestamp())}"
+        alert_id = f"{rule_name}_{int(datetime.now().timestamp())}"
 
         alert = Alert(
             id=alert_id,
@@ -189,8 +189,8 @@ class AlertManager:
 
         alert = self.alerts[alert_id]
         alert.status = AlertStatus.RESOLVED
-        alert.resolved_at = datetime.utcnow()
-        alert.updated_at = datetime.utcnow()
+        alert.resolved_at = datetime.now()
+        alert.updated_at = datetime.now()
 
         self.logger.info("alert_resolved", alert_id=alert_id)
         return True
@@ -203,8 +203,8 @@ class AlertManager:
         alert = self.alerts[alert_id]
         alert.status = AlertStatus.ACKNOWLEDGED
         alert.acknowledged_by = user
-        alert.acknowledged_at = datetime.utcnow()
-        alert.updated_at = datetime.utcnow()
+        alert.acknowledged_at = datetime.now()
+        alert.updated_at = datetime.now()
 
         self.logger.info("alert_acknowledged", alert_id=alert_id, user=user)
         return True

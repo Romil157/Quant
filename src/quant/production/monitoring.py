@@ -422,7 +422,7 @@ class HealthCheck:
 
         return {
             "status": "healthy" if all_healthy else "unhealthy",
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now().isoformat(),
             "uptime_seconds": time.time() - self.start_time,
             "checks": results,
         }

@@ -20,6 +20,7 @@ from quant.strategies.signals import (
     MACDMomentumStrategy,
     MeanReversionSignalStrategy,
     MomentumSignalStrategy,
+    extract_symbols,
 )
 
 
@@ -180,11 +181,7 @@ class PairTradingStrategy(Strategy):
 
 
 def _extract_symbols(data: pd.DataFrame) -> list[str]:
-    symbols: set[str] = set()
-    for col in data.columns:
-        if isinstance(col, tuple):
-            symbols.add(col[0])
-    return sorted(symbols)
+    return extract_symbols(data)
 
 
 def _close_price(data: pd.DataFrame, symbol: str) -> float | None:
