@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import operator
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
@@ -397,23 +398,10 @@ async def check_metric_threshold(
 ) -> Alert | None:
     """Check a metric against threshold and fire alert if needed."""
     manager = get_alert_manager()
+    op_map = {">=": operator.ge, "<=": operator.le, "==": operator.eq, "!=": operator.ne, ">": operator.gt, "<": operator.lt}
+    op = next((fn for prefix, fn in op_map.items() if condition.startswith(prefix)), operator.gt)
 
-    # Parse condition
-    triggered = False
-    if condition.startswith(">"):
-        triggered = value > threshold
-    elif condition.startswith("<"):
-        triggered = value < threshold
-    elif condition.startswith(">="):
-        triggered = value >= threshold
-    elif condition.startswith("<="):
-        triggered = value <= threshold
-    elif condition.startswith("=="):
-        triggered = value == threshold
-    elif condition.startswith("!="):
-        triggered = value != threshold
-
-    if triggered:
+    if op(value, threshold):
         return manager.fire_alert(
             rule_name=rule_name,
             message=f"{metric_name} {condition} {threshold} (current: {value})",

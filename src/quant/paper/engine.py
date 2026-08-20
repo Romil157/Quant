@@ -49,6 +49,55 @@ class PaperConfig:
     log_pnl: bool = True
     alert_on_risk_breach: bool = True
 
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> PaperConfig:
+        """Create PaperConfig from nested or flat dictionary."""
+        exec_data = data.get("execution", {})
+        if isinstance(exec_data, dict):
+            execution = ExecutionConfig(
+                commission_bps=exec_data.get("commission_bps", 2.0),
+                spread_bps=exec_data.get("spread_bps", 1.0),
+                slippage_bps=exec_data.get("slippage_bps", 2.0),
+                fill_probability=exec_data.get("fill_probability", 1.0),
+                partial_fill_prob=exec_data.get("partial_fill_prob", 0.0),
+            )
+        elif isinstance(exec_data, ExecutionConfig):
+            execution = exec_data
+        else:
+            execution = ExecutionConfig()
+
+        risk = data.get("risk", {}) if isinstance(data.get("risk"), dict) else {}
+        data_sec = data.get("data", {}) if isinstance(data.get("data"), dict) else {}
+        state = data.get("state", {}) if isinstance(data.get("state"), dict) else {}
+        mon = data.get("monitoring", {}) if isinstance(data.get("monitoring"), dict) else {}
+
+        return cls(
+            enabled=data.get("enabled", False),
+            broker=data.get("broker", "simulated"),
+            account_id=data.get("account_id", "paper_account_001"),
+            initial_capital=data.get("initial_capital", 100_000),
+            base_currency=data.get("base_currency", "USD"),
+            market_open=data.get("market_open", "09:30"),
+            market_close=data.get("market_close", "16:00"),
+            timezone=data.get("timezone", "America/New_York"),
+            execution=execution,
+            data_provider=data_sec.get("provider", data.get("data_provider", "mock")),
+            symbols=data_sec.get("symbols", data.get("symbols", ["SPY", "QQQ", "IWM"])),
+            timeframe=data_sec.get("timeframe", data.get("timeframe", "1m")),
+            max_position_pct=risk.get("max_position_pct", data.get("max_position_pct", 0.10)),
+            max_gross_exposure=risk.get("max_gross_exposure", data.get("max_gross_exposure", 1.0)),
+            max_net_exposure=risk.get("max_net_exposure", data.get("max_net_exposure", 0.5)),
+            max_daily_loss=risk.get("max_daily_loss", data.get("max_daily_loss", 0.05)),
+            max_drawdown=risk.get("max_drawdown", data.get("max_drawdown", 0.15)),
+            position_limit_check=risk.get("position_limit_check", data.get("position_limit_check", "pre_trade")),
+            state_db_path=state.get("db_path", data.get("state_db_path", "data/paper/state.db")),
+            checkpoint_interval=state.get("checkpoint_interval", data.get("checkpoint_interval", 100)),
+            log_trades=mon.get("log_trades", data.get("log_trades", True)),
+            log_positions=mon.get("log_positions", data.get("log_positions", True)),
+            log_pnl=mon.get("log_pnl", data.get("log_pnl", True)),
+            alert_on_risk_breach=mon.get("alert_on_risk_breach", data.get("alert_on_risk_breach", True)),
+        )
+
 
 class PaperState:
     """Persistent state for paper trading using SQLite."""
@@ -701,8 +750,6 @@ class PaperEngine(BacktestEngine):
 
 def create_paper_engine_from_yaml(config_path: str) -> PaperEngine:
     """Create PaperEngine from YAML config file."""
-    from pathlib import Path
-
     import yaml
 
     path = Path(config_path)
@@ -710,43 +757,10 @@ def create_paper_engine_from_yaml(config_path: str) -> PaperEngine:
         raise FileNotFoundError(f"Config file not found: {path}")
 
     with open(path, encoding="utf-8") as f:
-        cfg = yaml.safe_load(f)
+        cfg = yaml.safe_load(f) or {}
 
     paper_config = cfg.get("paper_trading", {})
-
-    config = PaperConfig(
-        enabled=paper_config.get("enabled", False),
-        broker=paper_config.get("broker", "simulated"),
-        account_id=paper_config.get("account_id", "paper_account_001"),
-        initial_capital=paper_config.get("initial_capital", 100_000),
-        base_currency=paper_config.get("base_currency", "USD"),
-        market_open=paper_config.get("market_open", "09:30"),
-        market_close=paper_config.get("market_close", "16:00"),
-        timezone=paper_config.get("timezone", "America/New_York"),
-        execution=ExecutionConfig(
-            commission_bps=paper_config.get("execution", {}).get("commission_bps", 2.0),
-            spread_bps=paper_config.get("execution", {}).get("spread_bps", 1.0),
-            slippage_bps=paper_config.get("execution", {}).get("slippage_bps", 2.0),
-            fill_probability=paper_config.get("execution", {}).get("fill_probability", 1.0),
-            partial_fill_prob=paper_config.get("execution", {}).get("partial_fill_prob", 0.0),
-        ),
-        data_provider=paper_config.get("data", {}).get("provider", "mock"),
-        symbols=paper_config.get("data", {}).get("symbols", ["SPY", "QQQ", "IWM"]),
-        timeframe=paper_config.get("data", {}).get("timeframe", "1m"),
-        max_position_pct=paper_config.get("risk", {}).get("max_position_pct", 0.10),
-        max_gross_exposure=paper_config.get("risk", {}).get("max_gross_exposure", 1.0),
-        max_net_exposure=paper_config.get("risk", {}).get("max_net_exposure", 0.5),
-        max_daily_loss=paper_config.get("risk", {}).get("max_daily_loss", 0.05),
-        max_drawdown=paper_config.get("risk", {}).get("max_drawdown", 0.15),
-        position_limit_check=paper_config.get("risk", {}).get("position_limit_check", "pre_trade"),
-        state_db_path=paper_config.get("state", {}).get("db_path", "data/paper/state.db"),
-        checkpoint_interval=paper_config.get("state", {}).get("checkpoint_interval", 100),
-        log_trades=paper_config.get("monitoring", {}).get("log_trades", True),
-        log_positions=paper_config.get("monitoring", {}).get("log_positions", True),
-        log_pnl=paper_config.get("monitoring", {}).get("log_pnl", True),
-        alert_on_risk_breach=paper_config.get("monitoring", {}).get("alert_on_risk_breach", True),
-    )
-    return PaperEngine(config)
+    return PaperEngine(PaperConfig.from_dict(paper_config))
 
 
 def run_paper_trading(config_path: str = "configs/paper.yaml") -> None:

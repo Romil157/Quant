@@ -96,12 +96,11 @@ class JobScheduler:
         if job_id is None:
             job_id = name.lower().replace(" ", "_")
 
-        if trigger == "cron":
-            trigger_obj = CronTrigger(**trigger_args)
-        elif trigger == "interval":
-            trigger_obj = IntervalTrigger(**trigger_args)
-        else:
+        trigger_classes = {"cron": CronTrigger, "interval": IntervalTrigger}
+        trigger_cls = trigger_classes.get(trigger)
+        if trigger_cls is None:
             raise ValueError(f"Unknown trigger type: {trigger}")
+        trigger_obj = trigger_cls(**trigger_args)
 
         # Wrap function for monitoring
         async def monitored_func():
