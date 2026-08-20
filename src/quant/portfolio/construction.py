@@ -123,10 +123,10 @@ def risk_parity(
 
     result = minimize(objective, x0, bounds=bounds, constraints=cons, method='SLSQP', options={'maxiter': 500})
 
-    if result.success:
+    if result.x is not None and not np.isnan(result.x).any() and np.all(np.isfinite(result.x)):
         weights = pd.Series(result.x, index=cov_matrix.index)
     else:
-        weights = pd.Series(1.0 / n, index=cov_matrix.index)
+        weights = pd.Series(x0, index=cov_matrix.index)
 
     return _apply_constraints(weights, constraints)
 
@@ -142,13 +142,23 @@ def minimum_variance(
     n = len(cov_matrix)
     cov = np.asarray(cov_matrix, dtype=float)
 
+    # Compute analytical unconstrained minimum variance weights as high-quality initial guess
+    x0 = np.ones(n) / n
+    try:
+        inv_cov = np.linalg.pinv(cov)
+        ones = np.ones(n)
+        analytical_x = (inv_cov @ ones) / (ones @ inv_cov @ ones)
+        if not np.isnan(analytical_x).any() and np.all(np.isfinite(analytical_x)):
+            x0 = analytical_x
+    except Exception:
+        pass
+
     def objective(weights: np.ndarray) -> float:
         return float(weights @ cov @ weights)
 
     def jacobian(weights: np.ndarray):
         return 2.0 * (cov @ weights)
 
-    x0 = np.ones(n) / n
     bounds = [(0.0, constraints.max_position) if constraints.long_only else (-constraints.max_position, constraints.max_position) for _ in range(n)]
     cons: list[dict[str, object]] = [{'type': 'eq', 'fun': lambda w: np.sum(w) - 1.0}]
     if not constraints.long_only and constraints.max_gross_exposure < np.inf:
@@ -156,10 +166,10 @@ def minimum_variance(
 
     result = minimize(objective, x0, jac=jacobian, bounds=bounds, constraints=cons, method='SLSQP', options={'maxiter': 500})
 
-    if result.success:
+    if result.x is not None and not np.isnan(result.x).any() and np.all(np.isfinite(result.x)):
         weights = pd.Series(result.x, index=cov_matrix.index)
     else:
-        weights = pd.Series(1.0 / n, index=cov_matrix.index)
+        weights = pd.Series(x0, index=cov_matrix.index)
 
     return _apply_constraints(weights, constraints)
 
@@ -192,10 +202,10 @@ def mean_variance(
 
     result = minimize(objective, x0, jac=jacobian, bounds=bounds, constraints=cons, method='SLSQP', options={'maxiter': 500})
 
-    if result.success:
+    if result.x is not None and not np.isnan(result.x).any() and np.all(np.isfinite(result.x)):
         weights = pd.Series(result.x, index=expected_returns.index)
     else:
-        weights = pd.Series(1.0 / n, index=expected_returns.index)
+        weights = pd.Series(x0, index=expected_returns.index)
 
     return _apply_constraints(weights, constraints)
 
@@ -230,10 +240,10 @@ def maximum_sharpe(
 
     result = minimize(neg_sharpe, x0, bounds=bounds, constraints=cons, method='SLSQP', options={'maxiter': 500})
 
-    if result.success:
+    if result.x is not None and not np.isnan(result.x).any() and np.all(np.isfinite(result.x)):
         weights = pd.Series(result.x, index=expected_returns.index)
     else:
-        weights = pd.Series(1.0 / n, index=expected_returns.index)
+        weights = pd.Series(x0, index=expected_returns.index)
 
     return _apply_constraints(weights, constraints)
 

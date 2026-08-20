@@ -38,7 +38,7 @@ def ewma_volatility(
 ) -> pd.Series:
     """EWMA volatility."""
     ewm_var = returns.ewm(span=span, adjust=False, min_periods=span).var()
-    vol = np.sqrt(ewm_var.where(ewm_var > 0))
+    vol = np.sqrt(ewm_var.clip(lower=0)).where(ewm_var > 0)
     if annualize:
         vol = vol * np.sqrt(periods_per_year)
     return vol
@@ -58,7 +58,7 @@ def garman_klass_volatility(
     co = np.log(close / open_)
     gk = 0.5 * hl**2 - (2 * np.log(2) - 1) * co**2
     gk_mean = gk.rolling(window=window, min_periods=window).mean()
-    gk_vol = np.sqrt(gk_mean.where(gk_mean > 0))
+    gk_vol = np.sqrt(gk_mean.clip(lower=0)).where(gk_mean > 0)
     if annualize:
         gk_vol = gk_vol * np.sqrt(periods_per_year)
     return gk_vol
@@ -74,7 +74,7 @@ def parkinson_volatility(
     """Parkinson volatility estimator using high-low range."""
     hl = np.log(high / low)
     park = (1 / (4 * np.log(2))) * hl**2
-    park_mean = np.sqrt(park.where(park > 0)).rolling(window=window, min_periods=window).mean()
+    park_mean = np.sqrt(park.clip(lower=0)).where(park > 0).rolling(window=window, min_periods=window).mean()
     if annualize:
         park_mean = park_mean * np.sqrt(periods_per_year)
     return park_mean
@@ -95,7 +95,7 @@ def rogers_satchell_volatility(
     co = np.log(close / open_)
     rs = ho * (ho - co) + lo * (lo - co)
     rs_mean = rs.rolling(window=window, min_periods=window).mean()
-    rs_vol = np.sqrt(rs_mean.where(rs_mean > 0))
+    rs_vol = np.sqrt(rs_mean.clip(lower=0)).where(rs_mean > 0)
     if annualize:
         rs_vol = rs_vol * np.sqrt(periods_per_year)
     return rs_vol
