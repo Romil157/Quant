@@ -100,30 +100,28 @@ def risk_parity(
         constraints = PortfolioConstraints()
 
     n = len(cov_matrix)
+    cov = np.asarray(cov_matrix, dtype=float)
 
-    def risk_contribution(weights):
-        port_vol = np.sqrt(weights @ cov_matrix @ weights)
-        mrc = (cov_matrix @ weights) / port_vol
-        rc = weights * mrc
-        return rc
+    def risk_contribution(weights: np.ndarray):
+        port_vol = float(np.sqrt(float(weights @ cov @ weights)))
+        if port_vol == 0:
+            return np.zeros_like(weights)
+        mrc = (cov @ weights) / port_vol
+        return weights * mrc
 
-    def objective(weights):
+    def objective(weights: np.ndarray) -> float:
         rc = risk_contribution(weights)
         target_rc = np.sum(rc) / n
-        return np.sum((rc - target_rc)**2)
+        return float(np.sum((rc - target_rc) ** 2))
 
-    # Initial guess
     x0 = np.ones(n) / n
+    bounds = [(0.0, constraints.max_position) if constraints.long_only else (-constraints.max_position, constraints.max_position) for _ in range(n)]
 
-    # Constraints
-    bounds = [(0, constraints.max_position) if constraints.long_only else (-constraints.max_position, constraints.max_position) for _ in range(n)]
+    cons: list[dict[str, object]] = [{'type': 'eq', 'fun': lambda w: np.sum(w) - 1.0}]
+    if not constraints.long_only and constraints.max_gross_exposure < np.inf:
+        cons.append({'type': 'ineq', 'fun': lambda w: constraints.max_gross_exposure - np.sum(np.abs(w))})
 
-    cons = [
-        {'type': 'eq', 'fun': lambda w: np.sum(w) - 1.0},
-        {'type': 'ineq', 'fun': lambda w: constraints.max_gross_exposure - np.sum(np.abs(w))},
-    ]
-
-    result = minimize(objective, x0, bounds=bounds, constraints=cons, method='SLSQP')
+    result = minimize(objective, x0, bounds=bounds, constraints=cons, method='SLSQP', options={'maxiter': 500})
 
     if result.success:
         weights = pd.Series(result.x, index=cov_matrix.index)
@@ -142,18 +140,21 @@ def minimum_variance(
         constraints = PortfolioConstraints()
 
     n = len(cov_matrix)
+    cov = np.asarray(cov_matrix, dtype=float)
 
-    def objective(weights):
-        return weights @ cov_matrix @ weights
+    def objective(weights: np.ndarray) -> float:
+        return float(weights @ cov @ weights)
+
+    def jacobian(weights: np.ndarray):
+        return 2.0 * (cov @ weights)
 
     x0 = np.ones(n) / n
-    bounds = [(0, constraints.max_position) if constraints.long_only else (-constraints.max_position, constraints.max_position) for _ in range(n)]
-    cons = [
-        {'type': 'eq', 'fun': lambda w: np.sum(w) - 1.0},
-        {'type': 'ineq', 'fun': lambda w: constraints.max_gross_exposure - np.sum(np.abs(w))},
-    ]
+    bounds = [(0.0, constraints.max_position) if constraints.long_only else (-constraints.max_position, constraints.max_position) for _ in range(n)]
+    cons: list[dict[str, object]] = [{'type': 'eq', 'fun': lambda w: np.sum(w) - 1.0}]
+    if not constraints.long_only and constraints.max_gross_exposure < np.inf:
+        cons.append({'type': 'ineq', 'fun': lambda w: constraints.max_gross_exposure - np.sum(np.abs(w))})
 
-    result = minimize(objective, x0, bounds=bounds, constraints=cons, method='SLSQP')
+    result = minimize(objective, x0, jac=jacobian, bounds=bounds, constraints=cons, method='SLSQP', options={'maxiter': 500})
 
     if result.success:
         weights = pd.Series(result.x, index=cov_matrix.index)
@@ -174,18 +175,22 @@ def mean_variance(
         constraints = PortfolioConstraints()
 
     n = len(expected_returns)
+    cov = np.asarray(cov_matrix, dtype=float)
+    mu = np.asarray(expected_returns, dtype=float)
 
-    def objective(weights):
-        return risk_aversion * weights @ cov_matrix @ weights - weights @ expected_returns
+    def objective(weights: np.ndarray) -> float:
+        return float(risk_aversion * (weights @ cov @ weights) - (weights @ mu))
+
+    def jacobian(weights: np.ndarray):
+        return 2.0 * risk_aversion * (cov @ weights) - mu
 
     x0 = np.ones(n) / n
-    bounds = [(0, constraints.max_position) if constraints.long_only else (-constraints.max_position, constraints.max_position) for _ in range(n)]
-    cons = [
-        {'type': 'eq', 'fun': lambda w: np.sum(w) - 1.0},
-        {'type': 'ineq', 'fun': lambda w: constraints.max_gross_exposure - np.sum(np.abs(w))},
-    ]
+    bounds = [(0.0, constraints.max_position) if constraints.long_only else (-constraints.max_position, constraints.max_position) for _ in range(n)]
+    cons: list[dict[str, object]] = [{'type': 'eq', 'fun': lambda w: np.sum(w) - 1.0}]
+    if not constraints.long_only and constraints.max_gross_exposure < np.inf:
+        cons.append({'type': 'ineq', 'fun': lambda w: constraints.max_gross_exposure - np.sum(np.abs(w))})
 
-    result = minimize(objective, x0, bounds=bounds, constraints=cons, method='SLSQP')
+    result = minimize(objective, x0, jac=jacobian, bounds=bounds, constraints=cons, method='SLSQP', options={'maxiter': 500})
 
     if result.success:
         weights = pd.Series(result.x, index=expected_returns.index)
@@ -206,22 +211,24 @@ def maximum_sharpe(
         constraints = PortfolioConstraints()
 
     n = len(expected_returns)
+    cov = np.asarray(cov_matrix, dtype=float)
+    mu = np.asarray(expected_returns, dtype=float)
 
-    def neg_sharpe(weights):
-        port_ret = weights @ expected_returns
-        port_vol = np.sqrt(weights @ cov_matrix @ weights)
-        if port_vol == 0:
+    def neg_sharpe(weights: np.ndarray):
+        port_ret = float(weights @ mu)
+        port_var = float(weights @ cov @ weights)
+        if port_var <= 0:
             return 1e6
-        return -(port_ret - risk_free_rate) / port_vol
+        port_vol = float(np.sqrt(port_var))
+        return float(-(port_ret - risk_free_rate) / port_vol)
 
     x0 = np.ones(n) / n
-    bounds = [(0, constraints.max_position) if constraints.long_only else (-constraints.max_position, constraints.max_position) for _ in range(n)]
-    cons = [
-        {'type': 'eq', 'fun': lambda w: np.sum(w) - 1.0},
-        {'type': 'ineq', 'fun': lambda w: constraints.max_gross_exposure - np.sum(np.abs(w))},
-    ]
+    bounds = [(0.0, constraints.max_position) if constraints.long_only else (-constraints.max_position, constraints.max_position) for _ in range(n)]
+    cons: list[dict[str, object]] = [{'type': 'eq', 'fun': lambda w: np.sum(w) - 1.0}]
+    if not constraints.long_only and constraints.max_gross_exposure < np.inf:
+        cons.append({'type': 'ineq', 'fun': lambda w: constraints.max_gross_exposure - np.sum(np.abs(w))})
 
-    result = minimize(neg_sharpe, x0, bounds=bounds, constraints=cons, method='SLSQP')
+    result = minimize(neg_sharpe, x0, bounds=bounds, constraints=cons, method='SLSQP', options={'maxiter': 500})
 
     if result.success:
         weights = pd.Series(result.x, index=expected_returns.index)

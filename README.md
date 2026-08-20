@@ -1,4 +1,4 @@
-# Quant — Quantitative Finance Research & Backtesting Platform
+# AegisQuant — Quantitative Finance Research, Backtesting & Execution Platform
 
 [![CI](https://img.shields.io/badge/CI-GitHub%20Actions-2088FF?logo=githubactions&logoColor=white)](.github/workflows/ci.yml)
 [![Python 3.12](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)](https://www.python.org/)

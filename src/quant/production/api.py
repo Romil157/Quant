@@ -38,13 +38,16 @@ from quant.strategies import STRATEGY_REGISTRY, create_strategy
 # Input bounds constants
 MAX_SYMBOLS = 50
 MAX_DATE_RANGE_DAYS = 3650  # 10 years
+HTTP_422_UNPROCESSABLE = getattr(
+    status, "HTTP_422_UNPROCESSABLE_CONTENT", getattr(status, "HTTP_422_UNPROCESSABLE_ENTITY", 422)
+)
 
 
 def validate_request_bounds(symbols: list[str], start_date_str: str, end_date_str: str) -> None:
     """Validate request size and date range guardrails."""
     if len(symbols) > MAX_SYMBOLS:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=HTTP_422_UNPROCESSABLE,
             detail=f"Symbol count exceeds maximum limit of {MAX_SYMBOLS}",
         )
     try:
@@ -52,17 +55,17 @@ def validate_request_bounds(symbols: list[str], start_date_str: str, end_date_st
         end = datetime.fromisoformat(end_date_str)
     except ValueError as e:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=HTTP_422_UNPROCESSABLE,
             detail="Invalid ISO date format for start_date or end_date",
         ) from e
     if start >= end:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=HTTP_422_UNPROCESSABLE,
             detail="start_date must be earlier than end_date",
         )
     if (end - start).days > MAX_DATE_RANGE_DAYS:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=HTTP_422_UNPROCESSABLE,
             detail=f"Date range exceeds maximum limit of {MAX_DATE_RANGE_DAYS} days",
         )
 
