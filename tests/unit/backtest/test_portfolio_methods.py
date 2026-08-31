@@ -97,8 +97,11 @@ def test_construction_methods_produce_distinct_weights():
     for method in [
         ConstructionMethod.EQUAL_WEIGHT,
         ConstructionMethod.INVERSE_VOLATILITY,
+        ConstructionMethod.VOLATILITY_TARGETING,
+        ConstructionMethod.RISK_PARITY,
         ConstructionMethod.MINIMUM_VARIANCE,
         ConstructionMethod.MEAN_VARIANCE,
+        ConstructionMethod.MAXIMUM_SHARPE,
     ]:
         config = BacktestConfig(
             initial_capital=100_000,
@@ -123,6 +126,15 @@ def test_construction_methods_produce_distinct_weights():
     for s in symbols:
         assert abs(eq_w[s] - 1 / 3) < 1e-5
 
-    # Inverse vol should not be all equal because volatilities differ
-    iv_w = weights_by_method[ConstructionMethod.INVERSE_VOLATILITY]
-    assert not np.allclose(iv_w.values, eq_w.values, atol=1e-3)
+    for method in [
+        ConstructionMethod.INVERSE_VOLATILITY,
+        ConstructionMethod.VOLATILITY_TARGETING,
+        ConstructionMethod.RISK_PARITY,
+        ConstructionMethod.MINIMUM_VARIANCE,
+        ConstructionMethod.MEAN_VARIANCE,
+        ConstructionMethod.MAXIMUM_SHARPE,
+    ]:
+        w = weights_by_method[method]
+        assert not np.allclose(np.asarray(w, dtype=float), np.asarray(eq_w, dtype=float), atol=1e-3), f"Method {method.value} unexpectedly matched equal weight"
+
+

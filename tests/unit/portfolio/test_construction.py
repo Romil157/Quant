@@ -135,15 +135,15 @@ def test_maximum_sharpe():
 
 
 def test_constraints_max_position():
-    """Test max position constraint."""
-    signals = pd.Series([1.0, 1.0], index=['A', 'B'])
-    constraints = PortfolioConstraints(max_position=0.4, long_only=True, max_gross_exposure=1.0)
+    """Test max position constraint with feasible universe."""
+    signals = pd.Series([1.0, 1.0, 1.0, 1.0, 1.0], index=['A', 'B', 'C', 'D', 'E'])
+    constraints = PortfolioConstraints(max_position=0.30, long_only=True, max_gross_exposure=1.0)
     weights = equal_weight(signals, constraints)
 
-    # After clipping to 0.4 and renormalizing, may slightly exceed 0.4
-    # This is expected behavior - the constraint is applied before renormalization
-    assert all(w <= 0.5 + 1e-6 for w in weights)  # Allow small overshoot from renorm
+    assert len(weights) == 5
+    assert all(w <= 0.30 + 1e-6 for w in weights)
     assert abs(weights.sum() - 1.0) < 1e-6
+
 
 
 def test_constraints_long_only():

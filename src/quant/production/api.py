@@ -3,9 +3,12 @@ from __future__ import annotations
 
 import hmac
 import time
+import uuid
+from collections import defaultdict
 from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
+from threading import Lock
 from typing import Any
 
 from fastapi import (
@@ -123,18 +126,48 @@ class HealthResponse(BaseModel):
 # Global state
 _app_state: dict[str, Any] = {}
 
+# Simple in-memory sliding window rate limiter
+_rate_limit_lock = Lock()
+_rate_limit_records: dict[str, list[float]] = defaultdict(list)
+
+
+def reset_rate_limits() -> None:
+    """Reset in-memory rate limit records (for testing)."""
+    with _rate_limit_lock:
+        _rate_limit_records.clear()
+
+
+def _check_rate_limit(client_ip: str, limit: int, window_seconds: float = 60.0) -> tuple[bool, int, int]:
+    """Check sliding-window rate limit. Returns (allowed, remaining, reset_seconds)."""
+    now = time.time()
+    cutoff = now - window_seconds
+    with _rate_limit_lock:
+        timestamps = [t for t in _rate_limit_records[client_ip] if t > cutoff]
+        _rate_limit_records[client_ip] = timestamps
+        remaining = max(0, limit - len(timestamps))
+        reset_seconds = int(window_seconds - (now - timestamps[0])) if timestamps else int(window_seconds)
+
+        if len(timestamps) >= limit:
+            return False, 0, max(1, reset_seconds)
+
+        _rate_limit_records[client_ip].append(now)
+        return True, remaining - 1, max(1, reset_seconds)
+
 
 async def verify_api_key(request: Request) -> None:
     """Verify API key authentication dependency for protected endpoints."""
     config = _app_state.get("config") or get_config()
+
+    # Fail closed if auth is required
+    if not config.security.require_auth and config.environment != "production":
+        return  # Auth explicitly disabled for local development
+
     expected_key = config.security.api_key
     if not expected_key:
-        if config.environment == "production":
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Server configuration error: authentication required in production",
-            )
-        return  # Auth disabled if no QUANT_API_KEY is configured in dev/test
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Server configuration error: authentication is enabled but API key is unset",
+        )
 
     header_name = config.security.api_key_header
     provided_key = request.headers.get(header_name)
@@ -150,8 +183,11 @@ async def lifespan(app: FastAPI):
     """Application lifespan manager."""
     config = get_config()
 
-    if config.environment == "production" and not config.security.api_key:
-        raise RuntimeError("API key authentication must be configured in production environment (QUANT_API_KEY environment variable missing)")
+    if (config.security.require_auth or config.environment == "production") and not config.security.api_key:
+        raise RuntimeError(
+            "API key authentication must be configured when require_auth=True "
+            "(QUANT_API_KEY environment variable missing)"
+        )
 
     # Configure logging
     configure_logging(
@@ -163,8 +199,12 @@ async def lifespan(app: FastAPI):
     logger = get_logger("api")
     logger.info("api_starting", environment=config.environment)
 
-    if not config.security.api_key:
-        logger.warning("api_key_auth_disabled", environment=config.environment, message="API Key authentication is disabled because QUANT_API_KEY is missing")
+    if not config.security.api_key and not config.security.require_auth:
+        logger.warning(
+            "api_key_auth_disabled",
+            environment=config.environment,
+            message="API Key authentication is explicitly disabled (require_auth=False)",
+        )
 
     # Initialize metrics
     metrics = get_metrics_collector()
@@ -192,14 +232,20 @@ def create_app(config: ProductionConfig | None = None) -> FastAPI:
     if config is None:
         config = get_config()
 
+    _app_state["config"] = config
+
+    if (config.security.require_auth or config.environment == "production") and not config.security.api_key:
+        raise RuntimeError(
+            "API key authentication must be configured when require_auth=True "
+            "(QUANT_API_KEY environment variable missing)"
+        )
+
+
     if config.environment == "production":
-        if not config.security.api_key:
-            raise RuntimeError("API key authentication must be configured in production environment (QUANT_API_KEY environment variable missing)")
         if not config.security.allowed_hosts or "*" in config.security.allowed_hosts:
             raise ValueError("SecurityConfig.allowed_hosts must be explicitly configured in production (cannot contain wildcard '*')")
         if not config.api.cors_origins or "*" in config.api.cors_origins:
             raise ValueError("APIConfig.cors_origins must be explicitly configured (non-empty and no wildcard '*') when allow_credentials=True in production environment.")
-
 
     app = FastAPI(
         title="Quant Platform API",
@@ -217,7 +263,6 @@ def create_app(config: ProductionConfig | None = None) -> FastAPI:
     )
 
     # CORS
-
     app.add_middleware(
         CORSMiddleware,
         allow_origins=config.api.cors_origins,
@@ -226,14 +271,72 @@ def create_app(config: ProductionConfig | None = None) -> FastAPI:
         allow_headers=["*"],
     )
 
-    # Request logging middleware
+    # Global Exception Handlers (Prevent stack trace / internal detail leakage)
+    @app.exception_handler(HTTPException)
+    async def http_exception_handler(request: Request, exc: HTTPException):
+        request_id = getattr(request.state, "request_id", None) or request.headers.get("X-Request-ID") or uuid.uuid4().hex
+        headers = dict(exc.headers or {})
+        headers["X-Request-ID"] = request_id
+        return JSONResponse(
+            status_code=exc.status_code,
+            content={
+                "detail": exc.detail,
+                "request_id": request_id,
+                "status_code": exc.status_code,
+            },
+            headers=headers,
+        )
+
+    @app.exception_handler(Exception)
+    async def global_exception_handler(request: Request, exc: Exception):
+        request_id = getattr(request.state, "request_id", None) or request.headers.get("X-Request-ID") or uuid.uuid4().hex
+        logger = _app_state.get("logger") or get_logger("api")
+        metrics = _app_state.get("metrics") or get_metrics_collector()
+        metrics.record_error("api", type(exc).__name__)
+        logger.exception("unhandled_server_error", request_id=request_id, path=request.url.path, error=str(exc))
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={
+                "detail": "Internal server error, see logs",
+                "request_id": request_id,
+                "status_code": 500,
+            },
+            headers={"X-Request-ID": request_id},
+        )
+
+    # Rate Limiting & Security Headers & Request Logging Middleware
     @app.middleware("http")
-    async def log_requests(request: Request, call_next):
+    async def full_pipeline_middleware(request: Request, call_next):
         logger = _app_state.get("logger") or get_logger("api")
         metrics = _app_state.get("metrics") or get_metrics_collector()
 
         start_time = time.time()
-        request_id = request.headers.get("X-Request-ID", "")
+        request_id = request.headers.get("X-Request-ID") or uuid.uuid4().hex
+        request.state.request_id = request_id
+
+        # Rate limiting check
+        client_ip = request.client.host if request.client else "127.0.0.1"
+        rate_limit = config.api.rate_limit
+        allowed, remaining, reset_secs = _check_rate_limit(client_ip, rate_limit)
+
+        if not allowed:
+            duration = time.time() - start_time
+            metrics.record_error("api", "RateLimitExceeded")
+            logger.warning("rate_limit_exceeded", client_ip=client_ip, path=request.url.path)
+            return JSONResponse(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                content={
+                    "detail": "Rate limit exceeded. Try again later.",
+                    "request_id": request_id,
+                    "status_code": 429,
+                },
+                headers={
+                    "X-Request-ID": request_id,
+                    "X-RateLimit-Limit": str(rate_limit),
+                    "X-RateLimit-Remaining": "0",
+                    "X-RateLimit-Reset": str(reset_secs),
+                },
+            )
 
         with log_context(request_id=request_id, method=request.method, path=request.url.path):
             try:
@@ -255,12 +358,31 @@ def create_app(config: ProductionConfig | None = None) -> FastAPI:
                     duration=duration,
                 )
 
+                # Set Security Headers
+                response.headers["X-Request-ID"] = request_id
+                response.headers["X-Content-Type-Options"] = "nosniff"
+                response.headers["X-Frame-Options"] = "DENY"
+                response.headers["X-XSS-Protection"] = "1; mode=block"
+                response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+                response.headers["X-RateLimit-Limit"] = str(rate_limit)
+                response.headers["X-RateLimit-Remaining"] = str(remaining)
+                response.headers["X-RateLimit-Reset"] = str(reset_secs)
+
                 return response
+
             except Exception as e:
                 duration = time.time() - start_time
                 metrics.record_error("api", type(e).__name__)
-                logger.exception("request_failed", error=str(e))
-                raise
+                logger.exception("request_failed", error=str(e), request_id=request_id)
+                return JSONResponse(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    content={
+                        "detail": "Internal server error, see logs",
+                        "request_id": request_id,
+                        "status_code": 500,
+                    },
+                    headers={"X-Request-ID": request_id},
+                )
 
     # Health check endpoints (Unauthenticated)
     @app.get("/health", response_model=HealthResponse)
@@ -346,8 +468,6 @@ def create_app(config: ProductionConfig | None = None) -> FastAPI:
                     detail=f"Unknown strategy {request.strategy!r}. Valid: {valid}",
                 )
 
-            # Filter params to those accepted by the strategy's __init__ to
-            # avoid brittle TypeErrors from mismatched JSON payloads.
             import inspect
 
             sig = inspect.signature(STRATEGY_REGISTRY[request.strategy].__init__)
@@ -362,7 +482,7 @@ def create_app(config: ProductionConfig | None = None) -> FastAPI:
             except TypeError as e:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"Strategy {request.strategy!r} rejected parameters {filtered_params}: {e}",
+                    detail=f"Strategy {request.strategy!r} rejected parameters: {e}",
                 ) from e
 
             engine = BacktestEngine(bt_config)
@@ -393,7 +513,7 @@ def create_app(config: ProductionConfig | None = None) -> FastAPI:
             duration = time.time() - start_time
             metrics.record_backtest(request.strategy, "error", duration)
             metrics.record_error("backtest", type(e).__name__)
-            logger.error("backtest_failed", strategy=request.strategy, error=str(e))
+            logger.exception("backtest_failed", strategy=request.strategy, error=str(e))
 
             return BacktestResponse(
                 status="error",
@@ -453,7 +573,7 @@ def create_app(config: ProductionConfig | None = None) -> FastAPI:
             duration = time.time() - start_time
             metrics.record_ml_training(request.model_name, "error", duration)
             metrics.record_error("ml", type(e).__name__)
-            logger.error("ml_experiment_failed", model=request.model_name, error=str(e))
+            logger.exception("ml_experiment_failed", model=request.model_name, error=str(e))
 
             return MLExperimentResponse(
                 status="error",
@@ -489,7 +609,7 @@ def create_app(config: ProductionConfig | None = None) -> FastAPI:
         except HTTPException:
             raise
         except Exception as e:
-            logger.error("model_comparison_failed", error=str(e))
+            logger.exception("model_comparison_failed", error=str(e))
             raise HTTPException(status_code=500, detail="Internal server error, see logs") from e
 
     # Data endpoints
@@ -525,7 +645,7 @@ def create_app(config: ProductionConfig | None = None) -> FastAPI:
         except Exception as e:
             for symbol in request.symbols:
                 metrics.record_data_download(request.provider, symbol, "error")
-            logger.error("data_download_failed", error=str(e))
+            logger.exception("data_download_failed", error=str(e))
             raise HTTPException(status_code=500, detail="Internal server error, see logs") from e
 
     @app.get(
@@ -547,7 +667,7 @@ def create_app(config: ProductionConfig | None = None) -> FastAPI:
         except HTTPException:
             raise
         except Exception as e:
-            logger.error("data_validation_failed", symbol=symbol, error=str(e))
+            logger.exception("data_validation_failed", symbol=symbol, error=str(e))
             raise HTTPException(status_code=500, detail="Internal server error, see logs") from e
 
     # Config endpoint
@@ -587,3 +707,4 @@ def run_server(
 
 if __name__ == "__main__":
     run_server()
+

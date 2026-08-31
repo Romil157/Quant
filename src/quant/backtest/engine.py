@@ -99,8 +99,9 @@ class BacktestEngine:
         self.peak_equity = config.initial_capital
         self.max_drawdown_hit = False
 
-        # Strategy
+        # Strategy & validation tracking
         self.strategy: Strategy | None = None
+        self.target_weights_history: list[dict[str, float]] = []
 
     def set_strategy(self, strategy: Strategy) -> None:
         self.strategy = strategy
@@ -130,8 +131,9 @@ class BacktestEngine:
         aligned_data = self._align_data(data)
 
         # Run simulation bar by bar
-        for timestamp, bar_data in aligned_data.iterrows():
-            self.current_time = timestamp
+        for timestamp_raw, bar_data in aligned_data.iterrows():
+            ts: datetime = timestamp_raw if isinstance(timestamp_raw, datetime) else pd.Timestamp(timestamp_raw).to_pydatetime()
+            self.current_time = ts
             self._update_market_data(bar_data)
 
             # Mark to market
@@ -142,11 +144,13 @@ class BacktestEngine:
 
             # Generate signals - convert Series to DataFrame for strategy
             bar_df = bar_data.to_frame().T
-            bar_df.index = [timestamp]
-            signals = self.strategy.generate_signals(bar_df, timestamp)
+            bar_df.index = [ts]
+            signals = self.strategy.generate_signals(bar_df, ts)
 
             # Portfolio construction
             target_weights = self._construct_portfolio(signals)
+            if len(target_weights) > 0:
+                self.target_weights_history.append(target_weights.to_dict())
 
             # Rebalance
             self._rebalance(target_weights)
@@ -154,8 +158,10 @@ class BacktestEngine:
             # Record state
             self._record_state()
 
-        # Finalize
-        return self._generate_results()
+        # Finalize & validate
+        results = self._generate_results()
+        self._validate_results(results)
+        return results
 
     def _align_data(self, data: dict[str, pd.DataFrame]) -> pd.DataFrame:
         """Align multi-symbol data to common timeline."""
@@ -237,41 +243,57 @@ class BacktestEngine:
             self.max_drawdown_hit = True
 
     def _get_rolling_expected_returns(self, symbols: list[str], window: int = 60) -> pd.Series:
-        """Calculate rolling expected returns (mean returns) for each symbol from price history."""
+        """Calculate rolling expected returns for each symbol from price history."""
         expected_returns: dict[str, float] = {}
-        for _symbol in symbols:
-            if _symbol in self.price_history and len(self.price_history[_symbol]) > window:
-                prices = pd.Series(self.price_history[_symbol])
-                returns = prices.pct_change().dropna()
-                exp_ret = returns.rolling(window=window, min_periods=window).mean().iloc[-1]
-                expected_returns[_symbol] = exp_ret if not np.isnan(exp_ret) else 0.0
-            else:
-                expected_returns[_symbol] = 0.0
-        return pd.Series(expected_returns)
-
-    def _get_rolling_covariance(self, symbols: list[str], window: int = 60) -> pd.DataFrame:
-        """Calculate rolling covariance matrix for symbols from price history."""
-        # Build return matrix from price history
-        return_matrix = pd.DataFrame()
         for symbol in symbols:
-            if symbol in self.price_history and len(self.price_history[symbol]) > window:
+            if symbol in self.price_history and len(self.price_history[symbol]) > 1:
                 prices = pd.Series(self.price_history[symbol])
                 returns = prices.pct_change().dropna()
-                return_matrix[symbol] = returns
+                if len(returns) > 0:
+                    exp_ret = returns.iloc[-window:].mean()
+                    expected_returns[symbol] = exp_ret if not np.isnan(exp_ret) else 0.0
+                else:
+                    expected_returns[symbol] = 0.0
+            else:
+                expected_returns[symbol] = 0.0
+        return pd.Series(expected_returns, index=symbols)
 
-        if len(return_matrix) < window:
-            # Fallback to diagonal matrix with estimated variances
-            n = len(symbols)
-            return pd.DataFrame(np.eye(n) * 0.0004, index=symbols, columns=symbols)
+    def _get_rolling_covariance(self, symbols: list[str], window: int = 60) -> pd.DataFrame:
+        """Calculate rolling covariance matrix for symbols from price history with shrinkage."""
+        return_dict = {}
+        for symbol in symbols:
+            if symbol in self.price_history and len(self.price_history[symbol]) > 1:
+                prices = pd.Series(self.price_history[symbol])
+                returns = prices.pct_change().dropna()
+                if len(returns) > 0:
+                    return_dict[symbol] = returns
 
-        # Rolling covariance
-        cov_matrix = return_matrix.rolling(window=window, min_periods=window).cov()
-        # Get the last valid covariance matrix
-        last_cov = cov_matrix.iloc[-len(symbols):, :]
-        if isinstance(last_cov.index, pd.MultiIndex):
-            # Reshape to proper matrix
-            last_cov = last_cov.unstack(level=0)
-        return last_cov.loc[symbols, symbols]
+        return_matrix = pd.DataFrame(return_dict)
+
+        if len(return_matrix) < 2 or len(return_matrix.columns) < len(symbols):
+            # Compute individual variances where possible
+            variances = []
+            for s in symbols:
+                if s in return_matrix and len(return_matrix[s]) > 1:
+                    v = float(np.var(return_matrix[s].to_numpy(dtype=float), ddof=1))
+                    variances.append(v if v > 1e-8 and not np.isnan(v) else 0.0004)
+                else:
+                    variances.append(0.0004)
+            return pd.DataFrame(np.diag(variances), index=symbols, columns=symbols)
+
+        # Use available history up to window
+        recent_returns = return_matrix.iloc[-window:]
+        cov_df = recent_returns.cov().reindex(index=symbols, columns=symbols).fillna(0.0)
+        cov_val = np.asarray(cov_df.to_numpy(), dtype=float)
+        diag_var = np.diag(np.diag(cov_val))
+        for i in range(len(symbols)):
+            if diag_var[i, i] <= 1e-8 or np.isnan(diag_var[i, i]):
+                diag_var[i, i] = 0.0004
+                cov_val[i, i] = 0.0004
+
+        shrinkage = 0.15 if len(recent_returns) < window else 0.01
+        shrunk_cov = (1.0 - shrinkage) * cov_val + shrinkage * diag_var
+        return pd.DataFrame(shrunk_cov, index=symbols, columns=symbols)
 
     def _construct_portfolio(self, signals: pd.Series) -> pd.Series:
         """Construct target portfolio from signals."""
@@ -294,11 +316,14 @@ class BacktestEngine:
             # Calculate rolling volatility for each symbol
             volatilities = {}
             for symbol in symbols:
-                if symbol in self.price_history and len(self.price_history[symbol]) > 20:
+                if symbol in self.price_history and len(self.price_history[symbol]) > 1:
                     prices = pd.Series(self.price_history[symbol])
                     returns = prices.pct_change().dropna()
-                    vol = returns.rolling(window=20, min_periods=20).std().iloc[-1]
-                    volatilities[symbol] = vol if not np.isnan(vol) and vol > 0 else 0.02
+                    if len(returns) > 1:
+                        vol = returns.iloc[-20:].std()
+                        volatilities[symbol] = vol if not np.isnan(vol) and vol > 1e-6 else 0.02
+                    else:
+                        volatilities[symbol] = 0.02
                 else:
                     volatilities[symbol] = 0.02
             vol_series = pd.Series(volatilities, index=symbols)
@@ -307,11 +332,14 @@ class BacktestEngine:
         elif method == ConstructionMethod.VOLATILITY_TARGETING:
             volatilities = {}
             for symbol in symbols:
-                if symbol in self.price_history and len(self.price_history[symbol]) > 20:
+                if symbol in self.price_history and len(self.price_history[symbol]) > 1:
                     prices = pd.Series(self.price_history[symbol])
                     returns = prices.pct_change().dropna()
-                    vol = returns.rolling(window=20, min_periods=20).std().iloc[-1]
-                    volatilities[symbol] = vol if not np.isnan(vol) and vol > 0 else 0.02
+                    if len(returns) > 1:
+                        vol = returns.iloc[-20:].std()
+                        volatilities[symbol] = vol if not np.isnan(vol) and vol > 1e-6 else 0.02
+                    else:
+                        volatilities[symbol] = 0.02
                 else:
                     volatilities[symbol] = 0.02
             vol_series = pd.Series(volatilities, index=symbols)
@@ -349,7 +377,9 @@ class BacktestEngine:
         """Rebalance portfolio to target weights."""
         current_value = self.portfolio.total_value
 
-        for symbol, target_weight in target_weights.items():
+        for symbol_raw, target_weight_raw in target_weights.items():
+            symbol: str = str(symbol_raw)
+            target_weight: float = float(target_weight_raw)
             target_value = current_value * target_weight
             current_pos = self.portfolio.get_position(symbol)
             current_value_pos = current_pos.market_value
@@ -357,7 +387,7 @@ class BacktestEngine:
             diff = target_value - current_value_pos
 
             if abs(diff) > current_value * 0.001:  # 10 bps threshold
-                price = self.current_prices.get(symbol, 0)
+                price = self.current_prices.get(symbol, 0.0)
                 if price > 0:
                     qty = diff / price
 
@@ -436,6 +466,29 @@ class BacktestEngine:
         )
         self.account_history.append(account)
 
+    def _validate_results(self, results: dict) -> None:
+        """Strategy validation layer: assert weights sum to 1, no NaNs, and check degradation."""
+        # 1. Check equity curve and returns for NaNs / Infs
+        equity = results.get("equity_curve", pd.Series(dtype=float))
+        if len(equity) > 0 and (equity.isna().any() or np.isinf(equity).any()):
+            raise ValueError("Strategy validation error: equity curve contains NaN or Inf values")
+
+        returns = results.get("returns", pd.Series(dtype=float))
+        if len(returns) > 0 and (returns.isna().any() or np.isinf(returns).any()):
+            raise ValueError("Strategy validation error: returns contain NaN or Inf values")
+
+        # 2. Check target weights history
+        if self.target_weights_history:
+            for idx, w_dict in enumerate(self.target_weights_history):
+                if not w_dict:
+                    continue
+                w_series = pd.Series(w_dict)
+                if w_series.isna().any() or np.isinf(w_series).any():
+                    raise ValueError(f"Strategy validation error: target weights at step {idx} contain NaN or Inf")
+                w_sum = w_series.sum()
+                if abs(w_sum - 1.0) > 1e-3 and abs(w_sum) > 1e-4:
+                    raise ValueError(f"Strategy validation error: target weights at step {idx} sum to {w_sum:.4f} (expected ~1.0)")
+
     def _generate_results(self) -> dict:
         """Generate backtest results."""
         returns = pd.Series(self.daily_returns)
@@ -451,4 +504,6 @@ class BacktestEngine:
             'final_equity': equity.iloc[-1] if len(equity) > 0 else self.config.initial_capital,
             'total_return': (equity.iloc[-1] / self.config.initial_capital - 1) if len(equity) > 0 else 0,
             'max_drawdown_hit': self.max_drawdown_hit,
+            'target_weights_history': self.target_weights_history,
         }
+

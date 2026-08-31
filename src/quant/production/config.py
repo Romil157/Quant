@@ -137,6 +137,7 @@ class SecurityConfig:
     api_key: str = ""
     secret_key: str = ""
     api_key_header: str = "X-API-Key"
+    require_auth: bool = True
     jwt_algorithm: str = "HS256"
     jwt_expiration_minutes: int = 60
     allowed_hosts: list[str] = field(default_factory=lambda: ["*"])
@@ -148,9 +149,9 @@ class SecurityConfig:
         sec_str = "'***'" if self.secret_key else "''"
         return (
             f"SecurityConfig(api_key={key_str}, secret_key={sec_str}, api_key_header={self.api_key_header!r}, "
-            f"jwt_algorithm={self.jwt_algorithm!r}, jwt_expiration_minutes={self.jwt_expiration_minutes!r}, "
-            f"allowed_hosts={self.allowed_hosts!r}, ssl_certfile={self.ssl_certfile!r}, "
-            f"ssl_keyfile={self.ssl_keyfile!r})"
+            f"require_auth={self.require_auth!r}, jwt_algorithm={self.jwt_algorithm!r}, "
+            f"jwt_expiration_minutes={self.jwt_expiration_minutes!r}, allowed_hosts={self.allowed_hosts!r}, "
+            f"ssl_certfile={self.ssl_certfile!r}, ssl_keyfile={self.ssl_keyfile!r})"
         )
 
     def __str__(self) -> str:
@@ -244,6 +245,8 @@ def load_config_from_env(config: ProductionConfig) -> ProductionConfig:
         config.security.api_key = api_key
     if secret_key := os.getenv("SECRET_KEY"):
         config.security.secret_key = secret_key
+    if req_auth := os.getenv("REQUIRE_AUTH"):
+        config.security.require_auth = req_auth.lower() not in ("false", "0", "no", "off")
     if sentry_dsn := os.getenv("SENTRY_DSN"):
         config.monitoring.sentry_dsn = sentry_dsn
 
