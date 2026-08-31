@@ -4,6 +4,18 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
+from quant.analytics.significance import (
+    BootstrapCI,
+    DSRResult,
+    PSRResult,
+    calculate_block_bootstrap_ci,
+    calculate_dsr,
+    calculate_psr,
+    calculate_psr_from_stats,
+    compute_deflated_sharpe,
+    expected_max_sharpe,
+)
+
 
 def calculate_returns(prices: pd.Series) -> pd.Series:
     """Calculate simple returns from prices."""
@@ -103,3 +115,27 @@ def calculate_correlation(
         return 0.0
 
     return float(aligned.iloc[:, 0].corr(aligned.iloc[:, 1]))
+
+
+__all__ = [
+    "calculate_returns",
+    "calculate_log_returns",
+    "calculate_drawdown",
+    "calculate_max_drawdown",
+    "calculate_sharpe",
+    "calculate_sortino",
+    "calculate_calmar",
+    "calculate_var",
+    "calculate_cvar",
+    "calculate_beta",
+    "calculate_correlation",
+    "calculate_psr",
+    "calculate_psr_from_stats",
+    "calculate_dsr",
+    "compute_deflated_sharpe",
+    "expected_max_sharpe",
+    "calculate_block_bootstrap_ci",
+    "PSRResult",
+    "DSRResult",
+    "BootstrapCI",
+]

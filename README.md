@@ -71,14 +71,14 @@ AegisQuant/
 ├─ notebooks/                  # Exploratory research notebooks
 ├─ reports/                    # Generated performance & backtest reports
 ├─ scripts/                    # CLI scripts (download, validate, backtest, research, benchmark, report)
-├─ tests/                      # Unit + integration + security test suite (260 tests)
+├─ tests/                      # Unit + integration + security test suite (268 tests)
 │   ├─ unit/
 │   └─ integration/            # Cross-module flows & pipeline tests
 ├─ src/quant/                  # Core platform package
 │   ├─ __init__.py
 │   ├─ __main__.py             # `python -m quant`
 │   ├─ cli.py                  # Typer CLI
-│   ├─ analytics/              # Performance & risk factor calcs (Sharpe, Sortino, VaR, beta)
+│   ├─ analytics/              # Performance, risk, and statistical significance (PSR, DSR, Block Bootstrap)
 │   ├─ backtest/               # Event-driven engine, execution cost sim, types
 │   ├─ brokers/                # Execution adapters (Alpaca, base broker interface)
 │   ├─ config/                 # Pydantic + YAML configuration loader
@@ -107,7 +107,7 @@ git clone <your-repo-url> AegisQuant
 cd AegisQuant
 uv sync --all-extras --dev           # installs runtime + dev + yfinance optional
 uv run python -m quant hello         # health check
-uv run pytest                        # 260 tests
+uv run pytest                        # 268 tests
 uv run python -m quant.production.api  # browse http://localhost:8000/docs
 ```
 
@@ -248,7 +248,12 @@ $100k ┼─────────╮───────╯
        2020-01   2020-07   2021-01   2021-07   2022-01   2022-07   2023-01
 ```
 
-> **Reproducing & Exporting**: To run cross-strategy benchmarks and generate interactive HTML teardowns with equity curves and drawdowns, run `scripts/run_benchmark.py` (outputs to [`reports/`](file:///c:/Users/Romil%20Doshi/Desktop/New%20folder/Quant/reports/)). See [`notebooks/`](file:///c:/Users/Romil%20Doshi/Desktop/New%20folder/Quant/notebooks/) for exploratory analysis.
+> **Statistical Significance & Multiple Testing Layer**: The benchmark report pipeline (`scripts/run_benchmark.py`) incorporates formal statistical inference on top of point estimates:
+> - **Deflated Sharpe Ratio (DSR)** (Bailey & López de Prado, 2014): Corrects for selection bias and data mining across $N$ tested strategies by testing against the expected maximum Sharpe ratio under the null hypothesis of zero true skill ($E[\max SR_0]$), penalizing negative skewness and excess kurtosis.
+> - **Probabilistic Sharpe Ratio (PSR)**: Quantifies the probability that true Sharpe exceeds zero ($SR^* > 0$), accounting for sample size and non-normality.
+> - **Circular Block Bootstrap**: Resamples 20-day return blocks over 1,000 simulations to construct robust empirical 95% confidence intervals on CAGR, Sharpe, and Max Drawdown that preserve time-series autocorrelation.
+>
+> **Reproducing & Exporting**: To run cross-strategy benchmarks with full statistical significance tables and generate interactive HTML teardowns with equity curves and drawdowns, run `scripts/run_benchmark.py` (outputs to [`reports/`](file:///c:/Users/Romil%20Doshi/Desktop/New%20folder/Quant/reports/)). See [`notebooks/`](file:///c:/Users/Romil%20Doshi/Desktop/New%20folder/Quant/notebooks/) for exploratory analysis.
 
 ---
 
