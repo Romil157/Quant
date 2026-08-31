@@ -20,6 +20,7 @@ A modular, production-hardened quantitative-finance research, backtesting, and p
 - [Configuration reference](#configuration-reference)
 - [Command line interface (CLI)](#command-line-interface-cli)
 - [Helper scripts](#helper-scripts)
+- [Illustrative strategy performance & benchmarks](#illustrative-strategy-performance--benchmarks)
 - [Built-in strategies](#built-in-strategies)
 - [Production REST API](#production-rest-api)
 - [Streamlit dashboard](#streamlit-dashboard)
@@ -34,7 +35,7 @@ A modular, production-hardened quantitative-finance research, backtesting, and p
 
 ## Key features
 
-- **Event-driven backtester** — In-memory engine with realistic transaction-cost modeling (commission, spread, slippage, market impact), portfolio tracking, drawdown-aware risk reduction, and `210`+ test scenarios.
+- **Event-driven backtester** — In-memory engine with realistic transaction-cost modeling (commission, spread, slippage, market impact), portfolio tracking, drawdown-aware risk reduction, and 260 test scenarios.
 - **Real portfolio construction** — Rolling volatility and covariance powering Inverse Volatility, Volatility Targeting, Risk Parity, Minimum Variance, Mean-Variance, and Maximum Sharpe optimizers.
 - **Built-in strategies** — `buy_and_hold`, `momentum`, `mean_reversion`, `breakout` (Donchian + ATR), `macd` (trend-filtered), `dual_momentum` (Antonacci), and `pair_trading` (z-score). Dispatched from a single `STRATEGY_REGISTRY` used by the CLI scripts, the API, and the dashboard.
 - **Machine-learning engine** — Time-series cross-validation (`TimeSeriesCV`), feature engineering pipelines, online learning ensembles (`OnlineEnsemble`), SGD-based Passive-Aggressive (sklearn 1.10-proof), drift detection, and automated model comparison.
@@ -53,13 +54,14 @@ A modular, production-hardened quantitative-finance research, backtesting, and p
 ## Project structure
 
 ```
-Quant/
+AegisQuant/
 ├─ .github/workflows/ci.yml    # CI matrix (lint + typecheck + tests) on ubuntu+windows
 ├─ configs/                    # YAML configs (dev, backtest, paper, research)
 ├─ data/                       # Raw, processed, cache, and metadata (Parquet + DuckDB)
 ├─ dashboard/                  # Streamlit research dashboard
 │   └─ app.py
 ├─ docs/                       # Documentation
+│   ├─ PROJECT_GUIDE.md
 │   ├─ RESEARCH_STANDARD.md
 │   ├─ LOOKAHEAD_AUDIT.md
 │   ├─ ALERTING.md
@@ -69,9 +71,9 @@ Quant/
 ├─ notebooks/                  # Exploratory research notebooks
 ├─ reports/                    # Generated performance & backtest reports
 ├─ scripts/                    # CLI scripts (download, validate, backtest, research, benchmark, report)
-├─ tests/                      # Unit + integration + security test suite (~248 tests)
+├─ tests/                      # Unit + integration + security test suite (260 tests)
 │   ├─ unit/
-│   └─ integration/            # Cross-module flows
+│   └─ integration/            # Cross-module flows & pipeline tests
 ├─ src/quant/                  # Core platform package
 │   ├─ __init__.py
 │   ├─ __main__.py             # `python -m quant`
@@ -101,11 +103,11 @@ Quant/
 ## Quick start
 
 ```powershell
-git clone <your-repo-url> Quant
-cd Quant
+git clone <your-repo-url> AegisQuant
+cd AegisQuant
 uv sync --all-extras --dev           # installs runtime + dev + yfinance optional
 uv run python -m quant hello         # health check
-uv run pytest                        # ~220 tests
+uv run pytest                        # 260 tests
 uv run python -m quant.production.api  # browse http://localhost:8000/docs
 ```
 
@@ -219,11 +221,11 @@ uv run python scripts/run_benchmark.py --start 2020-01-01 --end 2023-12-31 --sym
 
 ---
 
-## Empirical results & strategy benchmarks
+## Illustrative strategy performance & benchmarks
 
-The platform includes empirical benchmark results generated under realistic institutional constraints (1.0 bps commission, 1.0 bps half-spread, 1.0 bps slippage, and market impact modeling).
+The following table illustrates representative sample metrics across standard strategy families under realistic institutional cost models (1.0 bps commission, 1.0 bps half-spread, 1.0 bps slippage, and market impact modeling). Actual performance varies depending on the specific universe, timeframe, data provider, and market regime. To generate empirical benchmarks on your own dataset, run `uv run python scripts/run_benchmark.py`.
 
-### Cross-Strategy Performance Benchmark (2020–2023 Multi-Asset Universe)
+### Illustrative Cross-Strategy Performance Profiles (Sample Multi-Asset Universe)
 
 | Strategy | CAGR | Sharpe Ratio | Sortino Ratio | Max Drawdown | Calmar Ratio | Win Rate | Ann. Volatility |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
@@ -236,7 +238,7 @@ The platform includes empirical benchmark results generated under realistic inst
 | **Buy & Hold (Equal Weight)** | **+10.5%** | **0.62** | **0.84** | **-24.8%** | **0.42** | **53.0%** | 16.9% |
 
 ```
-Sample Equity Growth Profile ($100k Initial Capital, Dual Momentum Strategy):
+Illustrative Equity Growth Profile ($100k Initial Capital, Dual Momentum Strategy):
 $160k ┤                                              ╭─────────── (Final: $160.8k)
 $140k ┤                                     ╭────────╯
 $120k ┤                 ╭───────────────────╯
@@ -246,7 +248,7 @@ $100k ┼─────────╮───────╯
        2020-01   2020-07   2021-01   2021-07   2022-01   2022-07   2023-01
 ```
 
-> **Sample Artifacts**: Sanitized HTML reports, equity curves, and returns are committed under [`reports/`](file:///c:/Users/Romil%20Doshi/Desktop/New%20folder/Quant/reports/) and interactive teardowns in [`notebooks/`](file:///c:/Users/Romil%20Doshi/Desktop/New%20folder/Quant/notebooks/).
+> **Reproducing & Exporting**: To run cross-strategy benchmarks and generate interactive HTML teardowns with equity curves and drawdowns, run `scripts/run_benchmark.py` (outputs to [`reports/`](file:///c:/Users/Romil%20Doshi/Desktop/New%20folder/Quant/reports/)). See [`notebooks/`](file:///c:/Users/Romil%20Doshi/Desktop/New%20folder/Quant/notebooks/) for exploratory analysis.
 
 ---
 
@@ -262,7 +264,7 @@ All strategies live in `quant.strategies` and dispatch from `STRATEGY_REGISTRY`.
 | `breakout`      | `BreakoutStrategy`          | Donchian-channel breakout with ATR trailing stop.                     |
 | `macd`          | `MACDMomentumStrategy`      | MACD crossover filtered by a slow moving-average trend filter.        |
 | `dual_momentum` | `DualMomentumStrategy`      | Antonacci dual-momentum: absolute + relative momentum with cash shell.|
-| `pair_trading`  | `PairTradingStrategy`       | Z-score of two-symbol price ratio; enters at |z|>entry_z.              |
+| `pair_trading`  | `PairTradingStrategy`       | Statistical arbitrage on 2-symbol ratio; enters at \|z\| > entry_z, exits when \|z\| < exit_z. |
 
 Use them programmatically:
 
@@ -333,7 +335,7 @@ uv run ruff check .
 # Type-check
 uv run mypy src/quant
 
-# Tests (~220 passing, including integration tests)
+# Tests (260 passing, including integration tests)
 uv run pytest
 
 # Coverage
@@ -416,7 +418,6 @@ CI (`.github/workflows/ci.yml`) runs the same matrix on `ubuntu-latest` and `win
 - Broker adapter SDKs (Interactive Brokers, Alpaca).
 - Dashboard v2: live positions, P&L, and authenticated review of experiments.
 - Native Polars path through features / backtest for large universes.
-- `tests/integration/` suite for cross-module end-to-end flows.
 
 ---
 

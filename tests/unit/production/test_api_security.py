@@ -63,7 +63,7 @@ def test_dev_environment_explicitly_disabled_auth():
     config.security.require_auth = False
     config.security.api_key = ""
     app = create_app(config)
-    assert app.title == "Quant Platform API"
+    assert app.title == "AegisQuant Platform API"
 
 
 def test_oversized_symbol_list_rejected():
@@ -191,7 +191,7 @@ def test_production_explicit_allowed_hosts_accepted():
     config.security.api_key = "secret"
     config.security.allowed_hosts = ["api.quant.com", "localhost", "testserver"]
     app = create_app(config)
-    assert app.title == "Quant Platform API"
+    assert app.title == "AegisQuant Platform API"
 
 
 def test_production_cors_wildcard_rejected():
@@ -223,7 +223,7 @@ def test_production_cors_explicit_accepted():
     config.security.allowed_hosts = ["api.quant.com"]
     config.api.cors_origins = ["https://dashboard.quant.com"]
     app = create_app(config)
-    assert app.title == "Quant Platform API"
+    assert app.title == "AegisQuant Platform API"
 
 
 

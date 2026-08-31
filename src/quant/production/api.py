@@ -246,9 +246,9 @@ def create_app(config: ProductionConfig | None = None) -> FastAPI:
             raise ValueError("APIConfig.cors_origins must be explicitly configured (non-empty and no wildcard '*') when allow_credentials=True in production environment.")
 
     app = FastAPI(
-        title="Quant Platform API",
-        description="Quantitative research and backtesting platform",
-        version="0.1.0",
+        title="AegisQuant Platform API",
+        description="AegisQuant quantitative research, backtesting, and execution platform",
+        version="0.2.0",
         lifespan=lifespan,
         docs_url="/docs" if config.api.enable_docs else None,
         redoc_url="/redoc" if config.api.enable_docs else None,

@@ -1,4 +1,4 @@
-"""Quant Research Dashboard (Streamlit).
+"""AegisQuant Research Dashboard (Streamlit).
 
 A lightweight research dashboard that pulls market data via the platform's
 data layer, runs buy-and-hold (or another simple strategy), and renders the
@@ -81,8 +81,8 @@ def render_returns_distribution(returns: pd.Series):
 
 
 def main():
-    st.set_page_config(page_title="Quant Research Dashboard", layout="wide")
-    st.title("Quant Research Dashboard")
+    st.set_page_config(page_title="AegisQuant Research Dashboard", layout="wide")
+    st.title("AegisQuant Research Dashboard")
     st.caption("Research-only — not a live trading UI.")
 
     with st.sidebar:
