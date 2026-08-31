@@ -41,9 +41,7 @@ from quant.strategies import STRATEGY_REGISTRY, create_strategy
 # Input bounds constants
 MAX_SYMBOLS = 50
 MAX_DATE_RANGE_DAYS = 3650  # 10 years
-HTTP_422_UNPROCESSABLE = getattr(
-    status, "HTTP_422_UNPROCESSABLE_CONTENT", getattr(status, "HTTP_422_UNPROCESSABLE_ENTITY", 422)
-)
+HTTP_422_UNPROCESSABLE = getattr(status, "HTTP_422_UNPROCESSABLE_CONTENT", 422)
 
 
 def validate_request_bounds(symbols: list[str], start_date_str: str, end_date_str: str) -> None:
