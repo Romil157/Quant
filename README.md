@@ -20,7 +20,7 @@ A modular, production-hardened quantitative-finance research, backtesting, and p
 - [Configuration reference](#configuration-reference)
 - [Command line interface (CLI)](#command-line-interface-cli)
 - [Helper scripts](#helper-scripts)
-- [Illustrative strategy performance & benchmarks](#illustrative-strategy-performance--benchmarks)
+- [Strategy performance & benchmarks](#strategy-performance--benchmarks)
 - [Built-in strategies](#built-in-strategies)
 - [Production REST API](#production-rest-api)
 - [Streamlit dashboard](#streamlit-dashboard)
@@ -35,7 +35,7 @@ A modular, production-hardened quantitative-finance research, backtesting, and p
 
 ## Key features
 
-- **Event-driven backtester** — In-memory engine with realistic transaction-cost modeling (commission, spread, slippage, market impact), portfolio tracking, drawdown-aware risk reduction, and 260 test scenarios.
+- **Event-driven backtester** — In-memory engine with realistic transaction-cost modeling (commission, spread, slippage, market impact), portfolio tracking, drawdown-aware risk reduction, and 269 test scenarios.
 - **Real portfolio construction** — Rolling volatility and covariance powering Inverse Volatility, Volatility Targeting, Risk Parity, Minimum Variance, Mean-Variance, and Maximum Sharpe optimizers.
 - **Built-in strategies** — `buy_and_hold`, `momentum`, `mean_reversion`, `breakout` (Donchian + ATR), `macd` (trend-filtered), `dual_momentum` (Antonacci), and `pair_trading` (z-score). Dispatched from a single `STRATEGY_REGISTRY` used by the CLI scripts, the API, and the dashboard.
 - **Machine-learning engine** — Time-series cross-validation (`TimeSeriesCV`), feature engineering pipelines, online learning ensembles (`OnlineEnsemble`), SGD-based Passive-Aggressive (sklearn 1.10-proof), drift detection, and automated model comparison.
@@ -71,7 +71,7 @@ AegisQuant/
 ├─ notebooks/                  # Exploratory research notebooks
 ├─ reports/                    # Generated performance & backtest reports
 ├─ scripts/                    # CLI scripts (download, validate, backtest, research, benchmark, report)
-├─ tests/                      # Unit + integration + security test suite (268 tests)
+├─ tests/                      # Unit + integration + security test suite (269 tests)
 │   ├─ unit/
 │   └─ integration/            # Cross-module flows & pipeline tests
 ├─ src/quant/                  # Core platform package
@@ -107,7 +107,7 @@ git clone <your-repo-url> AegisQuant
 cd AegisQuant
 uv sync --all-extras --dev           # installs runtime + dev + yfinance optional
 uv run python -m quant hello         # health check
-uv run pytest                        # 268 tests
+uv run pytest                        # 269 tests
 uv run python -m quant.production.api  # browse http://localhost:8000/docs
 ```
 
@@ -221,11 +221,36 @@ uv run python scripts/run_benchmark.py --start 2020-01-01 --end 2023-12-31 --sym
 
 ---
 
-## Illustrative strategy performance & benchmarks
+## Strategy performance & benchmarks
 
-The following table illustrates representative sample metrics across standard strategy families under realistic institutional cost models (1.0 bps commission, 1.0 bps half-spread, 1.0 bps slippage, and market impact modeling). Actual performance varies depending on the specific universe, timeframe, data provider, and market regime. To generate empirical benchmarks on your own dataset, run `uv run python scripts/run_benchmark.py`.
+### Real Reproducible Benchmark Run (2018–2024 Baseline)
 
-### Illustrative Cross-Strategy Performance Profiles (Sample Multi-Asset Universe)
+The full interactive HTML report and machine-readable data are committed under [`reports/benchmark/official_benchmark_report.html`](./reports/benchmark/official_benchmark_report.html). This run was generated on real historical market data (`SPY`, `QQQ`, `IWM`, `EFA`, `EEM` across 2018-01-01 to 2024-12-31) fetched via Yahoo Finance, with full transaction-cost modeling and fixed bootstrap seed (`--seed 42`).
+
+#### Exact Reproduction Command
+
+```powershell
+uv run python scripts/run_benchmark.py --provider yfinance --seed 42 --report-name official_benchmark_report
+```
+
+#### Empirical Cross-Strategy Results (Real Market Data)
+
+| Strategy | Return % | Sharpe [95% CI] | Max DD % [95% CI] | PSR (SR*>0) | DSR (N=7) | 95% Significance |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| **Breakout** | +422.25% | 0.43 [-0.31, 0.99] | 130.2% [97.6%, 100.0%] | 89.9% | 3.7% | Not Sig (DSR<0.95) |
+| **Buy & Hold** | +37.73% | -0.38 [-0.66, 0.64] | 33.9% [17.6%, 100.0%] | 2.3% | 0.0% | Not Sig (DSR<0.95) |
+| **Dual Momentum** | +79.97% | 0.51 [0.35, 0.78] | 92.7% [70.4%, 99.0%] | 99.9% | 0.1% | Not Sig (DSR<0.95) |
+| **MACD** | +242.21% | -0.22 [-0.83, 0.54] | 131.9% [100.0%, 100.0%] | 26.8% | 0.0% | Not Sig (DSR<0.95) |
+| **Mean Reversion** | -54.15% | 0.28 [-0.69, 0.66] | 113.1% [100.0%, 100.0%] | 86.5% | 0.2% | Not Sig (DSR<0.95) |
+| **Momentum** | +73.18% | 0.27 [-0.37, 0.85] | 106.7% [83.8%, 100.0%] | 77.4% | 1.7% | Not Sig (DSR<0.95) |
+| **Pair Trading** | -16.63% | -1.60 [-2.32, -0.97] | 108.5% [0.0%, 100.0%] | 0.0% | 0.0% | Not Sig (DSR<0.95) |
+
+---
+
+
+### Illustrative Strategy Performance Profiles (Sample Multi-Asset Universe)
+
+The following table illustrates representative sample reference metrics across standard strategy families under baseline institutional cost modeling (1.0 bps commission, 1.0 bps half-spread, 1.0 bps slippage, and market impact modeling). Actual performance varies depending on the specific universe, timeframe, data provider, and market regime.
 
 | Strategy | CAGR | Sharpe Ratio | Sortino Ratio | Max Drawdown | Calmar Ratio | Win Rate | Ann. Volatility |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
@@ -249,11 +274,11 @@ $100k ┼─────────╮───────╯
 ```
 
 > **Statistical Significance & Multiple Testing Layer**: The benchmark report pipeline (`scripts/run_benchmark.py`) incorporates formal statistical inference on top of point estimates:
-> - **Deflated Sharpe Ratio (DSR)** (Bailey & López de Prado, 2014): Corrects for selection bias and data mining across $N$ tested strategies by testing against the expected maximum Sharpe ratio under the null hypothesis of zero true skill ($E[\max SR_0]$), penalizing negative skewness and excess kurtosis.
+> - **Deflated Sharpe Ratio (DSR)** (Bailey & López de Prado, 2014): Corrects for selection bias and data mining across $N$ tested strategies by testing against the expected maximum Sharpe ratio under the null hypothesis of zero true skill ($E[\max SR_0] = 0.85$), penalizing negative skewness and excess kurtosis.
 > - **Probabilistic Sharpe Ratio (PSR)**: Quantifies the probability that true Sharpe exceeds zero ($SR^* > 0$), accounting for sample size and non-normality.
 > - **Circular Block Bootstrap**: Resamples 20-day return blocks over 1,000 simulations to construct robust empirical 95% confidence intervals on CAGR, Sharpe, and Max Drawdown that preserve time-series autocorrelation.
 >
-> **Reproducing & Exporting**: To run cross-strategy benchmarks with full statistical significance tables and generate interactive HTML teardowns with equity curves and drawdowns, run `scripts/run_benchmark.py` (outputs to [`reports/`](file:///c:/Users/Romil%20Doshi/Desktop/New%20folder/Quant/reports/)). See [`notebooks/`](file:///c:/Users/Romil%20Doshi/Desktop/New%20folder/Quant/notebooks/) for exploratory analysis.
+> **Reproducing & Exporting**: To run cross-strategy benchmarks with full statistical significance tables and generate interactive HTML teardowns with equity curves and drawdowns, run `scripts/run_benchmark.py` (outputs to [`reports/`](./reports/)). See [`notebooks/`](./notebooks/) for exploratory analysis.
 
 ---
 
@@ -340,7 +365,7 @@ uv run ruff check .
 # Type-check
 uv run mypy src/quant
 
-# Tests (260 passing, including integration tests)
+# Tests (269 passing, including integration tests)
 uv run pytest
 
 # Coverage

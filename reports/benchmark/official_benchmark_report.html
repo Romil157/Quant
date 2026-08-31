@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Cross-Strategy Benchmark & Statistical Significance Report</title>
+    <style>
+        body { font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, sans-serif; margin: 40px; background: #f8fafc; color: #1e293b; }
+        .container { max-width: 1300px; margin: 0 auto; background: white; padding: 32px; border-radius: 12px; box-shadow: 0 4px 16px rgba(0,0,0,0.06); }
+        h1 { color: #0f172a; margin-top: 0; font-size: 26px; border-bottom: 2px solid #e2e8f0; padding-bottom: 12px; }
+        h2 { color: #334155; margin-top: 32px; font-size: 20px; }
+        .summary { background: #f1f5f9; padding: 20px; border-radius: 8px; margin: 20px 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; }
+        .summary-card { background: white; padding: 14px; border-radius: 6px; border: 1px solid #e2e8f0; }
+        .summary-card strong { display: block; font-size: 12px; color: #64748b; text-transform: uppercase; margin-bottom: 4px; }
+        .summary-card span { font-size: 16px; font-weight: 600; color: #0f172a; }
+        table { border-collapse: collapse; width: 100%; margin: 24px 0; font-size: 14px; }
+        th, td { border: 1px solid #e2e8f0; padding: 12px 14px; text-align: center; }
+        th { background-color: #0f172a; color: white; font-weight: 600; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px; }
+        tr:nth-child(even) { background-color: #f8fafc; }
+        tr:hover { background-color: #f1f5f9; }
+        .badge-pass { background: #dcfce7; color: #15803d; padding: 4px 8px; border-radius: 4px; font-weight: 600; font-size: 12px; display: inline-block; }
+        .badge-fail { background: #fee2e2; color: #b91c1c; padding: 4px 8px; border-radius: 4px; font-weight: 600; font-size: 12px; display: inline-block; }
+        .ci-sub { font-size: 11px; color: #64748b; display: block; margin-top: 2px; }
+        .positive { color: #16a34a; font-weight: 600; }
+        .negative { color: #dc2626; font-weight: 600; }
+        .methodology { background: #eff6ff; border-left: 4px solid #3b82f6; padding: 16px; border-radius: 0 8px 8px 0; margin-top: 24px; }
+        .methodology h3 { margin-top: 0; color: #1e40af; font-size: 16px; }
+        .methodology ul { margin: 0; padding-left: 20px; color: #1e3a8a; line-height: 1.6; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Cross-Strategy Benchmark & Statistical Significance Report</h1>
+        <div class="summary">
+            <div class="summary-card">
+                <strong>Date Range</strong>
+                <span>2018-01-01 &rarr; 2024-12-31</span>
+            </div>
+            <div class="summary-card">
+                <strong>Symbols Tested</strong>
+                <span>SPY, QQQ, IWM, EFA, EEM</span>
+            </div>
+            <div class="summary-card">
+                <strong>Data Provider</strong>
+                <span>yfinance</span>
+            </div>
+            <div class="summary-card">
+                <strong>Initial Capital</strong>
+                <span>$100,000</span>
+            </div>
+            <div class="summary-card">
+                <strong>Multiple Testing Correction</strong>
+                <span>DSR (N=7 trials, E[max SR₀]=1.02)</span>
+            </div>
+            <div class="summary-card">
+                <strong>Bootstrap Model</strong>
+                <span>Circular Block (L=20d, B=500)</span>
+            </div>
+        </div>
+
+        <h2>Strategy Comparison & Statistical Confidence</h2>
+        <table>
+            <tr>
+                <th>Strategy</th>
+                <th>Total Return</th>
+                <th>CAGR [95% CI]</th>
+                <th>Sharpe Ratio [95% CI]</th>
+                <th>Max DD [95% CI]</th>
+                <th>Win Rate</th>
+                <th>PSR (SR* &gt; 0)</th>
+                <th>DSR (N=7)</th>
+                <th>Significance (95%)</th>
+            </tr>
+            <tr>
+                <td style="text-align: left; font-weight: 600;">breakout</td>
+                <td class="positive">+422.25%</td>
+                <td>
+                    +26.70%
+                    <span class="ci-sub">[-73.3%, +23.1%]</span>
+                </td>
+                <td>
+                    <strong>0.43</strong>
+                    <span class="ci-sub">[-0.31, 0.99]</span>
+                </td>
+                <td>
+                    130.22%
+                    <span class="ci-sub">[97.6%, 100.0%]</span>
+                </td>
+                <td>51.4%</td>
+                <td><strong>89.9%</strong></td>
+                <td><strong>3.7%</strong></td>
+                <td><span class="badge-fail">&cross; Not Significant (DSR&lt;0.95)</span></td>
+            </tr>
+            <tr>
+                <td style="text-align: left; font-weight: 600;">buy_and_hold</td>
+                <td class="positive">+37.73%</td>
+                <td>
+                    -73.25%
+                    <span class="ci-sub">[-73.3%, +10.5%]</span>
+                </td>
+                <td>
+                    <strong>-0.38</strong>
+                    <span class="ci-sub">[-0.66, 0.64]</span>
+                </td>
+                <td>
+                    33.92%
+                    <span class="ci-sub">[17.6%, 100.0%]</span>
+                </td>
+                <td>54.1%</td>
+                <td><strong>2.3%</strong></td>
+                <td><strong>0.0%</strong></td>
+                <td><span class="badge-fail">&cross; Not Significant (DSR&lt;0.95)</span></td>
+            </tr>
+            <tr>
+                <td style="text-align: left; font-weight: 600;">dual_momentum</td>
+                <td class="positive">+79.97%</td>
+                <td>
+                    +8.78%
+                    <span class="ci-sub">[-26.6%, +67.8%]</span>
+                </td>
+                <td>
+                    <strong>0.51</strong>
+                    <span class="ci-sub">[0.35, 0.78]</span>
+                </td>
+                <td>
+                    92.72%
+                    <span class="ci-sub">[70.4%, 99.0%]</span>
+                </td>
+                <td>49.0%</td>
+                <td><strong>99.9%</strong></td>
+                <td><strong>0.1%</strong></td>
+                <td><span class="badge-fail">&cross; Not Significant (DSR&lt;0.95)</span></td>
+            </tr>
+            <tr>
+                <td style="text-align: left; font-weight: 600;">macd</td>
+                <td class="positive">+242.21%</td>
+                <td>
+                    +19.26%
+                    <span class="ci-sub">[-73.3%, -73.3%]</span>
+                </td>
+                <td>
+                    <strong>-0.22</strong>
+                    <span class="ci-sub">[-0.83, 0.54]</span>
+                </td>
+                <td>
+                    131.85%
+                    <span class="ci-sub">[100.0%, 100.0%]</span>
+                </td>
+                <td>21.9%</td>
+                <td><strong>26.8%</strong></td>
+                <td><strong>0.0%</strong></td>
+                <td><span class="badge-fail">&cross; Not Significant (DSR&lt;0.95)</span></td>
+            </tr>
+            <tr>
+                <td style="text-align: left; font-weight: 600;">mean_reversion</td>
+                <td class="negative">-54.15%</td>
+                <td>
+                    -10.56%
+                    <span class="ci-sub">[-73.3%, -73.3%]</span>
+                </td>
+                <td>
+                    <strong>0.28</strong>
+                    <span class="ci-sub">[-0.69, 0.66]</span>
+                </td>
+                <td>
+                    113.10%
+                    <span class="ci-sub">[100.0%, 100.0%]</span>
+                </td>
+                <td>47.6%</td>
+                <td><strong>86.5%</strong></td>
+                <td><strong>0.2%</strong></td>
+                <td><span class="badge-fail">&cross; Not Significant (DSR&lt;0.95)</span></td>
+            </tr>
+            <tr>
+                <td style="text-align: left; font-weight: 600;">momentum</td>
+                <td class="positive">+73.18%</td>
+                <td>
+                    +8.18%
+                    <span class="ci-sub">[-73.3%, +53.0%]</span>
+                </td>
+                <td>
+                    <strong>0.27</strong>
+                    <span class="ci-sub">[-0.37, 0.85]</span>
+                </td>
+                <td>
+                    106.66%
+                    <span class="ci-sub">[83.8%, 100.0%]</span>
+                </td>
+                <td>49.2%</td>
+                <td><strong>77.4%</strong></td>
+                <td><strong>1.7%</strong></td>
+                <td><span class="badge-fail">&cross; Not Significant (DSR&lt;0.95)</span></td>
+            </tr>
+            <tr>
+                <td style="text-align: left; font-weight: 600;">pair_trading</td>
+                <td class="negative">-16.63%</td>
+                <td>
+                    -2.57%
+                    <span class="ci-sub">[-73.3%, -73.3%]</span>
+                </td>
+                <td>
+                    <strong>-1.60</strong>
+                    <span class="ci-sub">[-2.32, -0.97]</span>
+                </td>
+                <td>
+                    108.45%
+                    <span class="ci-sub">[0.0%, 100.0%]</span>
+                </td>
+                <td>48.6%</td>
+                <td><strong>0.0%</strong></td>
+                <td><strong>0.0%</strong></td>
+                <td><span class="badge-fail">&cross; Not Significant (DSR&lt;0.95)</span></td>
+            </tr>
+        </table>
+
+        <div class="methodology">
+            <h3>Statistical Rigor & Multiple Testing Methodology</h3>
+            <ul>
+                <li><strong>Probabilistic Sharpe Ratio (PSR)</strong>: Measures the probability that the strategy's true Sharpe ratio exceeds zero (SR* = 0), accounting for non-normal return distributions (skewness and excess kurtosis) and sample size n.</li>
+                <li><strong>Deflated Sharpe Ratio (DSR)</strong>: Extends PSR by replacing the zero benchmark with E[max SR₀] (the expected maximum Sharpe ratio under the null hypothesis of zero true skill across N=7 independent strategies). Corrects for selection bias, data mining, and multiple testing.</li>
+                <li><strong>Circular Block Bootstrap (CBB)</strong>: Resamples daily returns in overlapping blocks of L=20 trading days (B=500 iterations) to preserve autocorrelation and compute non-parametric 95% empirical confidence intervals.</li>
+                <li><strong>Execution Assumptions</strong>: Commission=2.0 bps, Spread=1.0 bps, Slippage=2.0 bps, Long-only max position=100%, Max drawdown risk trigger=20%.</li>
+            </ul>
+        </div>
+
+        <p style="text-align: right; color: #94a3b8; font-size: 12px; margin-top: 30px;"><em>Generated: 2026-08-31 14:37:51 | AegisQuant Statistical Layer</em></p>
+    </div>
+</body>
+</html>
