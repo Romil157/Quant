@@ -59,7 +59,9 @@ def main() -> None:
     parser.add_argument("--symbols", nargs="+", help="Override symbol universe")
     parser.add_argument("--provider", default=None, help="Data provider override (mock/parquet/yfinance)")
     parser.add_argument("--output", default="reports/benchmark", help="Output directory for benchmark report")
+    parser.add_argument("--report-name", default=None, help="Custom filename for the generated report (HTML/JSON)")
     parser.add_argument("--bootstraps", type=int, default=500, help="Number of block bootstrap iterations")
+    parser.add_argument("--seed", type=int, default=42, help="Random seed for bootstrap resampling and reproducibility")
     args = parser.parse_args()
 
     config_path = Path(args.config)
@@ -153,7 +155,7 @@ def main() -> None:
     dsr_results = compute_deflated_sharpe(strategy_returns, confidence_threshold=0.95) if strategy_returns else {}
     psr_results = {name: calculate_psr(rets, benchmark_sr=0.0) for name, rets in strategy_returns.items()}
     ci_results = {
-        name: calculate_block_bootstrap_ci(rets, block_length=20, n_bootstraps=args.bootstraps, random_seed=42)
+        name: calculate_block_bootstrap_ci(rets, block_length=20, n_bootstraps=args.bootstraps, random_seed=args.seed)
         for name, rets in strategy_returns.items()
     }
 
@@ -161,7 +163,7 @@ def main() -> None:
     print("\n" + "=" * 130)
     print("CROSS-STRATEGY BENCHMARK & STATISTICAL SIGNIFICANCE REPORT")
     print("=" * 130)
-    print(f"Date range: {start} -> {end} | Provider: {provider} | Initial Capital: ${capital:,.0f}")
+    print(f"Date range: {start} -> {end} | Provider: {provider} | Initial Capital: ${capital:,.0f} | Seed: {args.seed}")
     print(f"Multiple Testing Correction: Deflated Sharpe Ratio (DSR) over N={len(STRATEGY_REGISTRY)} strategies")
     print(f"Bootstrap Resampling: Circular Block Bootstrap (L=20 days, B={args.bootstraps} resamples, 95% CI)")
     print("-" * 130)
@@ -196,13 +198,18 @@ def main() -> None:
 
     print("=" * 130)
 
-    # Generate HTML report
+    # Generate HTML report and JSON summary
     try:
+        import json
         output_dir = Path(args.output)
         output_dir.mkdir(parents=True, exist_ok=True)
 
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        report_path = output_dir / f"benchmark_report_{timestamp}.html"
+        base_name = args.report_name or f"benchmark_report_{timestamp}"
+        if base_name.endswith(".html"):
+            base_name = base_name[:-5]
+        report_path = output_dir / f"{base_name}.html"
+        json_path = output_dir / f"{base_name}.json"
 
         # Calculate sample expected max Sharpe for display
         exp_max_sr = next(iter(dsr_results.values())).expected_max_sharpe if dsr_results else 0.0
@@ -346,7 +353,45 @@ def main() -> None:
 </html>"""
 
         report_path.write_text(html_content, encoding="utf-8")
-        print(f"\nBenchmark report written to: {report_path}")
+        print(f"\nBenchmark HTML report written to: {report_path}")
+
+        # Write machine-readable JSON results
+        json_data = {
+            "metadata": {
+                "generated_at": datetime.now().isoformat(),
+                "start_date": start,
+                "end_date": end,
+                "symbols": symbols,
+                "provider": provider,
+                "initial_capital": capital,
+                "bootstraps": args.bootstraps,
+                "seed": args.seed,
+                "expected_max_sharpe": exp_max_sr,
+                "num_strategies": len(STRATEGY_REGISTRY),
+            },
+            "strategies": {},
+        }
+        for sname, res in results_by_strategy.items():
+            if "error" in res or sname not in strategy_returns:
+                json_data["strategies"][sname] = {"error": res.get("error", "No data")}
+            else:
+                json_data["strategies"][sname] = {
+                    "total_return_pct": res["total_return"],
+                    "cagr_pct": ci_results[sname]["cagr"].point_estimate * 100,
+                    "cagr_95_ci": [ci_results[sname]["cagr"].lower_ci * 100, ci_results[sname]["cagr"].upper_ci * 100],
+                    "sharpe": res["sharpe"],
+                    "sharpe_95_ci": [ci_results[sname]["sharpe"].lower_ci, ci_results[sname]["sharpe"].upper_ci],
+                    "max_dd_pct": res["max_dd"],
+                    "max_dd_95_ci": [ci_results[sname]["max_dd"].lower_ci * 100, ci_results[sname]["max_dd"].upper_ci * 100],
+                    "win_rate_pct": res["win_rate"],
+                    "psr": psr_results[sname].psr,
+                    "dsr": dsr_results[sname].dsr,
+                    "is_significant_95": dsr_results[sname].is_significant,
+                    "final_equity": res["final_equity"],
+                    "num_trades": res["num_trades"],
+                }
+        json_path.write_text(json.dumps(json_data, indent=2), encoding="utf-8")
+        print(f"Benchmark JSON data written to: {json_path}")
 
     except Exception as e:
         print(f"Warning: report generation skipped: {e}", file=sys.stderr)
